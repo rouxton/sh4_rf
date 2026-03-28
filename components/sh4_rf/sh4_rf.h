@@ -104,7 +104,9 @@ class SH4RfComponent : public Component,
                  InternalGPIOPin *tx,   InternalGPIOPin *rx)
       : remote_base::RemoteTransmitterBase(tx),
         remote_base::RemoteReceiverBase(rx),
-        sclk_(sclk), sdio_(sdio), csb_(csb), fcsb_(fcsb) {}
+        sclk_(sclk), sdio_(sdio), csb_(csb), fcsb_(fcsb) {
+    ESP_LOGE("sh4_rf", "SH4RfComponent constructor called, tx=%p rx=%p", tx, rx);
+  }
 
   /* --- Component lifecycle ------------------------------------------- */
   void setup()       override;
