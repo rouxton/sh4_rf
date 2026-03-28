@@ -86,9 +86,9 @@ enum class RxMode {
    Inherits from both RemoteTransmitterBase and RemoteReceiverBase so it
    integrates natively with all ESPHome remote_base protocols and dumpers.
    ----------------------------------------------------------------------- */
-class SH4RfComponent : public remote_base::RemoteTransmitterBase,
-                       public remote_base::RemoteReceiverBase,
-                       public Component {
+class SH4RfComponent : public Component,
+                       public remote_base::RemoteTransmitterBase,
+                       public remote_base::RemoteReceiverBase {
  public:
   /**
    * Constructor.

@@ -79,9 +79,9 @@ RX_MODE_OPTIONS = {
 
 SH4RfComponent        = sh4_rf_ns.class_(
     "SH4RfComponent",
-    remote_base.RemoteReceiverBase,
-    remote_base.RemoteTransmitterBase,
     cg.Component,
+    remote_base.RemoteTransmitterBase,
+    remote_base.RemoteReceiverBase,
 )
 TurnOnReceiverAction  = sh4_rf_ns.class_("TurnOnReceiverAction",  automation.Action)
 TurnOffReceiverAction = sh4_rf_ns.class_("TurnOffReceiverAction", automation.Action)
