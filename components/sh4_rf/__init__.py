@@ -193,10 +193,15 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID], sclk, sdio, csb, fcsb, tx, rx)
     await cg.register_component(var, config)
 
-    await remote_base.build_dumpers(config, var)
-    await remote_base.build_triggers(config, var)
-    await remote_base.build_binary_sensors(config, var)
-    await remote_base.build_listeners(config, var)
+    # ESPHome 2026.x API: build_dumpers(config[CONF_DUMP]) returns a list,
+    # each dumper is registered manually; same for triggers/listeners.
+    dumpers = await remote_base.build_dumpers(config[CONF_DUMP])
+    for dumper in dumpers:
+        cg.add(var.register_dumper(dumper))
+
+    triggers = await remote_base.build_triggers(config)
+    for trigger in triggers:
+        cg.add(var.register_listener(trigger))
 
     cg.add(var.set_spi_enabled(spi_enabled))
     cg.add(var.set_rx_mode(config[CONF_RX_MODE]))
