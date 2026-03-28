@@ -268,6 +268,8 @@ void SH4RfComponent::go_standby() {
    ======================================================================= */
 
 void SH4RfComponent::setup() {
+  ESP_LOGE(TAG, "setup() start");
+
   /* Configure SPI pins (only if SPI is enabled) */
   if (spi_enabled_ && sclk_ != nullptr && sdio_ != nullptr) {
     sclk_->setup(); sclk_->digital_write(false);
@@ -276,15 +278,21 @@ void SH4RfComponent::setup() {
   if (csb_  != nullptr) { csb_->setup();  csb_->digital_write(true); }
   if (fcsb_ != nullptr) { fcsb_->setup(); fcsb_->digital_write(true); }
 
+  ESP_LOGE(TAG, "setup() pins OK");
+
   /* TX and RX data pins */
   this->RemoteTransmitterBase::pin_->setup();
   this->RemoteTransmitterBase::pin_->digital_write(false);
   this->RemoteReceiverBase::pin_->setup();
 
+  ESP_LOGE(TAG, "setup() data pins OK");
+
   /* ISR store */
   auto &s = store_;
   s.pin = this->RemoteReceiverBase::pin_->to_isr();
   if (s.buffer_size % 2 != 0) s.buffer_size++;
+
+  ESP_LOGE(TAG, "setup() ISR store OK, spi_enabled=%d", spi_enabled_);
 
   /* Initialise radio if SPI is available */
   if (spi_enabled_) {
@@ -296,7 +304,9 @@ void SH4RfComponent::setup() {
     initialized_ = true;
   }
 
+  ESP_LOGE(TAG, "setup() calling set_receiver(%d)", !receiver_disabled_);
   set_receiver(!receiver_disabled_);
+  ESP_LOGE(TAG, "setup() done");
 }
 
 void SH4RfComponent::dump_config() {
