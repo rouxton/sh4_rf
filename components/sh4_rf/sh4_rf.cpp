@@ -91,20 +91,19 @@ void SH4RfComponent::spi_write_bank(uint8_t base_addr, const uint8_t *bank, uint
 
 static constexpr uint32_t STATE_TIMEOUT_MS = 10;
 
-/** Poll MODE_STA until expected state is reached or timeout. */
-static bool wait_state(SH4RfComponent *self, uint8_t expected) {
+bool SH4RfComponent::wait_state_(uint8_t expected) {
   uint32_t t0 = millis();
   while (millis() - t0 < STATE_TIMEOUT_MS) {
-    if ((self->spi_read_reg(CMT2300A_REG_MODE_STA) & CMT2300A_MASK_STA) == expected)
+    if ((spi_read_reg(CMT2300A_REG_MODE_STA) & CMT2300A_MASK_STA) == expected)
       return true;
     App.feed_wdt();
   }
   return false;
 }
 
-static bool go_state(SH4RfComponent *self, uint8_t cmd, uint8_t expected) {
-  self->spi_write_reg(CMT2300A_REG_MODE_CTL, cmd);
-  return wait_state(self, expected);
+bool SH4RfComponent::go_state_(uint8_t cmd, uint8_t expected) {
+  spi_write_reg(CMT2300A_REG_MODE_CTL, cmd);
+  return wait_state_(expected);
 }
 
 /* =======================================================================
@@ -168,13 +167,13 @@ bool SH4RfComponent::start_tx() {
     spi_write_reg(CMT2300A_REG_INT2_CTL,
                   spi_read_reg(CMT2300A_REG_INT2_CTL) & ~CMT2300A_TX_DIN_INV);
 
-    if (!go_state(this, CMT2300A_GO_SLEEP, CMT2300A_STA_SLEEP)) {
+    if (!go_state_(CMT2300A_GO_SLEEP, CMT2300A_STA_SLEEP)) {
       ESP_LOGE(TAG, "TX: cannot reach SLEEP"); return false;
     }
-    if (!go_state(this, CMT2300A_GO_STBY, CMT2300A_STA_STBY)) {
+    if (!go_state_(CMT2300A_GO_STBY, CMT2300A_STA_STBY)) {
       ESP_LOGE(TAG, "TX: cannot reach STBY"); return false;
     }
-    if (!go_state(this, CMT2300A_GO_TX, CMT2300A_STA_TX)) {
+    if (!go_state_(CMT2300A_GO_TX, CMT2300A_STA_TX)) {
       ESP_LOGE(TAG, "TX: cannot reach TX"); return false;
     }
   }
@@ -234,10 +233,10 @@ bool SH4RfComponent::start_rx() {
       spi_write_reg(CMT2300A_REG_PKT29, 0x20);
     }
 
-    if (!go_state(this, CMT2300A_GO_SLEEP, CMT2300A_STA_SLEEP)) {
+    if (!go_state_(CMT2300A_GO_SLEEP, CMT2300A_STA_SLEEP)) {
       ESP_LOGE(TAG, "RX: cannot reach SLEEP"); return false;
     }
-    if (!go_state(this, CMT2300A_GO_STBY, CMT2300A_STA_STBY)) {
+    if (!go_state_(CMT2300A_GO_STBY, CMT2300A_STA_STBY)) {
       ESP_LOGE(TAG, "RX: cannot reach STBY"); return false;
     }
 
@@ -246,7 +245,7 @@ bool SH4RfComponent::start_rx() {
     spi_write_reg(CMT2300A_REG_INT_CLR1,  0x3F);
     spi_write_reg(CMT2300A_REG_INT_CLR2,  0x3F);
 
-    if (!go_state(this, CMT2300A_GO_RX, CMT2300A_STA_RX)) {
+    if (!go_state_(CMT2300A_GO_RX, CMT2300A_STA_RX)) {
       ESP_LOGE(TAG, "RX: cannot reach RX state"); return false;
     }
 
@@ -260,7 +259,7 @@ bool SH4RfComponent::start_rx() {
 void SH4RfComponent::go_standby() {
   if (spi_enabled_) {
     spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_STBY);
-    wait_state(this, CMT2300A_STA_STBY);
+    wait_state_(CMT2300A_STA_STBY);
   }
 }
 

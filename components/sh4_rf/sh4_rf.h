@@ -147,6 +147,10 @@ class SH4RfComponent : public remote_base::RemoteTransmitterBase,
   uint8_t spi_read_reg(uint8_t addr);
   void    spi_write_bank(uint8_t base_addr, const uint8_t *bank, uint8_t len);
 
+  /* CMT2300A state machine helpers */
+  bool wait_state_(uint8_t expected);
+  bool go_state_(uint8_t cmd, uint8_t expected);
+
   /* Receiver management */
   void set_receiver(bool on);
 
