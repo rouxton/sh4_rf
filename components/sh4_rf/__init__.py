@@ -44,7 +44,7 @@ sh4_rf_ns       = cg.esphome_ns.namespace("sh4_rf")
 remote_base_ns  = cg.esphome_ns.namespace("remote_base")
 
 ToleranceMode   = remote_base_ns.enum("ToleranceMode")
-RxMode          = sh4_rf_ns.enum("RxMode")
+RxMode          = sh4_rf_ns.enum("RxMode", is_class=True)
 
 TYPE_PERCENTAGE = "percentage"
 TYPE_TIME       = "time"
