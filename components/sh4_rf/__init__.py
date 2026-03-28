@@ -96,21 +96,24 @@ SET_RX_MODE_SCHEMA = ACTION_SCHEMA.extend(
 )
 
 
-@automation.register_action("sh4_rf.turn_on_receiver", TurnOnReceiverAction, ACTION_SCHEMA)
+@automation.register_action("sh4_rf.turn_on_receiver", TurnOnReceiverAction, ACTION_SCHEMA,
+                            synchronous=True)
 async def turn_on_to_code(config, action_id, template_arg, args):
     var = cg.new_Pvariable(action_id, template_arg)
     await cg.register_parented(var, config[CONF_RECEIVER_ID])
     return var
 
 
-@automation.register_action("sh4_rf.turn_off_receiver", TurnOffReceiverAction, ACTION_SCHEMA)
+@automation.register_action("sh4_rf.turn_off_receiver", TurnOffReceiverAction, ACTION_SCHEMA,
+                            synchronous=True)
 async def turn_off_to_code(config, action_id, template_arg, args):
     var = cg.new_Pvariable(action_id, template_arg)
     await cg.register_parented(var, config[CONF_RECEIVER_ID])
     return var
 
 
-@automation.register_action("sh4_rf.set_rx_mode", SetRxModeAction, SET_RX_MODE_SCHEMA)
+@automation.register_action("sh4_rf.set_rx_mode", SetRxModeAction, SET_RX_MODE_SCHEMA,
+                            synchronous=True)
 async def set_rx_mode_to_code(config, action_id, template_arg, args):
     var = cg.new_Pvariable(action_id, template_arg)
     await cg.register_parented(var, config[CONF_RECEIVER_ID])
@@ -123,8 +126,10 @@ CONFIG_SCHEMA = cv.Schema(
         cv.GenerateID(): cv.declare_id(SH4RfComponent),
 
         # --- SPI pins (Variant A: SCLK/SDIO connected) ---
+        # SDIO is bidirectional but declared as output here; direction is
+        # switched at runtime in C++ via pin_mode(FLAG_INPUT / FLAG_OUTPUT).
         cv.Optional(CONF_SCLK_PIN): pins.internal_gpio_output_pin_schema,
-        cv.Optional(CONF_SDIO_PIN): pins.internal_gpio_pin_schema,
+        cv.Optional(CONF_SDIO_PIN): pins.internal_gpio_output_pin_schema,
 
         # --- Chip select pins ---
         cv.Required(CONF_CSB_PIN):  pins.internal_gpio_output_pin_schema,
