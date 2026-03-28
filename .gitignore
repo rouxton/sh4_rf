@@ -1,0 +1,19 @@
+# ESPHome build artifacts
+.esphome/
+build/
+*.bin
+*.elf
+
+# Secrets
+secrets.yaml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~

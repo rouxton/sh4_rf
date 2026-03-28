@@ -1,0 +1,160 @@
+# sh4_rf - examples/replay.yaml
+# ============================================================
+# REPLAY MODE: send learned RF codes + Home Assistant integration
+# ============================================================
+# Replace the raw[] values below with the codes captured in
+# learn mode (copy from the ESPHome log "Received Raw:" lines).
+#
+# Format:
+#   positive values = mark duration in microseconds
+#   negative values = space duration in microseconds
+# ============================================================
+
+substitutions:
+  device_name: cbu-rf-bridge
+  friendly_name: "CBU RF Bridge"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+
+bk72xx:
+  board: cbu
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+logger:
+  level: INFO
+
+api:
+ota:
+  - platform: esphome
+
+external_components:
+  - source:
+      type: git
+      url: https://github.com/rouxton/sh4_rf
+      ref: main
+    components: [sh4_rf]
+
+# ---- Variant B (no-name blaster, SCLK/SDIO not connected) ----
+sh4_rf:
+  id: rf
+  spi_enabled: false
+  csb_pin:  P6
+  fcsb_pin: P26
+  tx_pin:   P22
+  rx_pin:   P20
+  rx_mode:  direct
+  dump: raw                 # keep enabled to allow learning new codes at runtime
+  receiver_disabled: false  # set true to disable receiver when not needed
+  filter: 50us
+  tolerance: 25%
+  start_pulse_min: 4ms
+  start_pulse_max: 12ms
+  end_pulse: 50ms
+
+# ---- RF TX buttons ----
+# Replace the raw[] values with your captured codes.
+# The example below uses placeholder values for a ceiling fan remote.
+# Repeat 3 times with 40ms gap between repetitions (adjust as needed).
+
+button:
+  - platform: template
+    name: "Fan Speed 1"
+    on_press:
+      - remote_transmitter.transmit_raw:
+          transmitter_id: rf
+          code:
+            # ---- REPLACE WITH YOUR CAPTURED CODE ----
+            - 9000
+            - -4500
+            - 560
+            - -1690
+            - 560
+            - -565
+            - 560
+            - -1690
+            - 560
+            - -565
+            - 560
+            - -1690
+            - 560
+            - -1690
+            - 560
+            - -565
+            - 560
+            - -565
+            - 560
+            - -1690
+            - 560
+            - -565
+            - 560
+            - -1690
+            - 560
+            - -10000
+          repeat:
+            times: 3
+            wait_time: 40ms
+
+  - platform: template
+    name: "Fan Speed 2"
+    on_press:
+      - remote_transmitter.transmit_raw:
+          transmitter_id: rf
+          code:
+            # ---- REPLACE WITH YOUR CAPTURED CODE ----
+            - 9000
+            - -4500
+            - 560
+            - -565
+            - 560
+            - -1690
+            - 560
+            - -10000
+          repeat:
+            times: 3
+            wait_time: 40ms
+
+  - platform: template
+    name: "Fan Off"
+    on_press:
+      - remote_transmitter.transmit_raw:
+          transmitter_id: rf
+          code:
+            # ---- REPLACE WITH YOUR CAPTURED CODE ----
+            - 9000
+            - -4500
+            - 560
+            - -1690
+            - 560
+            - -10000
+          repeat:
+            times: 3
+            wait_time: 40ms
+
+# ---- Receiver control ----
+switch:
+  - platform: template
+    name: "RF Receiver"
+    id: rf_receiver_switch
+    optimistic: true
+    restore_mode: ALWAYS_OFF   # off by default in replay mode
+    on_turn_on:
+      - sh4_rf.turn_on_receiver:
+          receiver_id: rf
+    on_turn_off:
+      - sh4_rf.turn_off_receiver:
+          receiver_id: rf
+
+sensor:
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+    entity_category: diagnostic
+  - platform: uptime
+    name: "Uptime"
+    update_interval: 300s
+    entity_category: diagnostic
