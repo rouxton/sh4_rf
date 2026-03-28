@@ -177,6 +177,7 @@ class SH4RfComponent : public remote_base::RemoteTransmitterBase,
   bool     transmitting_{false};
   bool     receive_started_{false};
   bool     initialized_{false};
+  bool     first_loop_{true};   /* diagnostic: report setup result on first loop() */
   uint32_t target_time_{0};
   uint32_t old_write_at_{0};
 

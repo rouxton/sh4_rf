@@ -470,6 +470,20 @@ void IRAM_ATTR SH4RfComponent::send_internal(uint32_t send_times, uint32_t send_
    ======================================================================= */
 
 void SH4RfComponent::loop() {
+  if (first_loop_) {
+    first_loop_ = false;
+    ESP_LOGE(TAG, "=== first loop() report ===");
+    ESP_LOGE(TAG, "  is_failed=%d receiver_disabled=%d initialized=%d",
+             is_failed(), receiver_disabled_, initialized_);
+    ESP_LOGE(TAG, "  buffer ptr=%p write_at=%u read_at=%u",
+             (void*)store_.buffer, store_.buffer_write_at, store_.buffer_read_at);
+    if (store_.buffer == nullptr) {
+      ESP_LOGE(TAG, "  >> buffer is NULL: set_receiver() was NOT called or failed");
+    } else {
+      ESP_LOGE(TAG, "  >> buffer allocated: set_receiver() ran OK");
+    }
+  }
+
   if (receiver_disabled_) return;
   if (rx_mode_ == RxMode::DIRECT) process_direct_rx_();
   else                             process_fifo_rx_();
