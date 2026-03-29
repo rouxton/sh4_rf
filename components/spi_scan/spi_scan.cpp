@@ -6,7 +6,8 @@ namespace spi_scan {
 
 static const char *TAG = "spi_scan";
 
-uint8_t SpiScanComponent::spi_read_reg_(uint8_t sclk, uint8_t sdio, uint8_t csb, uint8_t addr) {
+uint8_t SpiScanComponent::spi_read_reg_(uint8_t sclk, uint8_t sdio,
+                                         uint8_t csb, uint8_t addr) {
   pinMode(csb, OUTPUT); digitalWrite(csb, LOW);
   pinMode(sdio, OUTPUT);
   uint8_t abyte = (addr << 1) | 0x01;
@@ -28,12 +29,26 @@ uint8_t SpiScanComponent::spi_read_reg_(uint8_t sclk, uint8_t sdio, uint8_t csb,
   return val;
 }
 
+static void blink(uint8_t pin, int times, int period_ms) {
+  for (int i = 0; i < times; i++) {
+    digitalWrite(pin, HIGH);
+    delay(period_ms / 2);
+    digitalWrite(pin, LOW);
+    delay(period_ms / 2);
+  }
+}
+
 void SpiScanComponent::setup() {
-  const uint8_t CSB = 6;
+  const uint8_t LED  = 9;   /* P9 status LED */
+  const uint8_t CSB  = 6;   /* confirmed */
   const uint8_t candidates[] = {7, 8, 14, 15, 16, 17, 23, 24, 26, 27, 28};
   const uint8_t n = sizeof(candidates);
 
-  ESP_LOGE(TAG, "=== SPI scan start, CSB=P6 ===");
+  pinMode(LED, OUTPUT); digitalWrite(LED, LOW);
+
+  /* 3 slow blinks = scan starting */
+  blink(LED, 3, 500);
+  delay(500);
 
   pinMode(CSB, OUTPUT); digitalWrite(CSB, HIGH);
   for (int i = 0; i < n; i++) {
@@ -43,6 +58,8 @@ void SpiScanComponent::setup() {
   delay(10);
 
   int found = 0;
+  uint8_t found_sclk = 0, found_sdio = 0;
+
   for (int si = 0; si < n; si++) {
     uint8_t sclk = candidates[si];
     if (sclk == CSB) continue;
@@ -54,8 +71,10 @@ void SpiScanComponent::setup() {
 
       uint8_t pid = spi_read_reg_(sclk, sdio, CSB, 0x01);
       if (pid == 0x66) {
-        ESP_LOGE(TAG, "*** FOUND! SCLK=P%d SDIO=P%d product_id=0x66 ***", sclk, sdio);
         found++;
+        found_sclk = sclk;
+        found_sdio = sdio;
+        ESP_LOGE(TAG, "CMT2300A FOUND: SCLK=P%d SDIO=P%d", sclk, sdio);
       }
       pinMode(sclk, OUTPUT); digitalWrite(sclk, LOW);
       pinMode(sdio, OUTPUT); digitalWrite(sdio, HIGH);
@@ -63,10 +82,18 @@ void SpiScanComponent::setup() {
     digitalWrite(sclk, HIGH);
   }
 
-  if (found == 0) {
-    ESP_LOGE(TAG, "=== No response: SCLK/SDIO not connected to CBU ===");
+  if (found > 0) {
+    /* FOUND: 10 rapid blinks */
+    ESP_LOGE(TAG, "FOUND %d match(es): last SCLK=P%d SDIO=P%d", found, found_sclk, found_sdio);
+    blink(LED, 10, 100);
+  } else {
+    /* NOT FOUND: 3 long blinks */
+    ESP_LOGE(TAG, "No CMT2300A response - SCLK/SDIO not connected");
+    blink(LED, 3, 1000);
   }
-  ESP_LOGE(TAG, "=== SPI scan done ===");
+
+  /* Keep LED on = scan complete */
+  digitalWrite(LED, HIGH);
 }
 
 }  // namespace spi_scan
