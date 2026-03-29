@@ -268,10 +268,6 @@ void SH4RfComponent::go_standby() {
    ======================================================================= */
 
 void SH4RfComponent::setup() {
-  /* Direct UART output to bypass log buffering issues on BK7231N */
-  printf("[SH4RF] setup() entry\n");
-  fflush(stdout);
-
   /* Configure SPI pins (only if SPI is enabled) */
   if (spi_enabled_ && sclk_ != nullptr && sdio_ != nullptr) {
     sclk_->setup(); sclk_->digital_write(false);
@@ -280,23 +276,15 @@ void SH4RfComponent::setup() {
   if (csb_  != nullptr) { csb_->setup();  csb_->digital_write(true); }
   if (fcsb_ != nullptr) { fcsb_->setup(); fcsb_->digital_write(true); }
 
-  printf("[SH4RF] pins OK\n"); fflush(stdout);
-
   /* TX and RX data pins */
   this->RemoteTransmitterBase::pin_->setup();
   this->RemoteTransmitterBase::pin_->digital_write(false);
   this->RemoteReceiverBase::pin_->setup();
 
-  printf("[SH4RF] data pins OK\n"); fflush(stdout);
-
   /* ISR store */
   auto &s = store_;
   s.pin = this->RemoteReceiverBase::pin_->to_isr();
   if (s.buffer_size % 2 != 0) s.buffer_size++;
-
-  printf("[SH4RF] ISR store OK, spi_enabled=%d receiver_disabled=%d\n",
-         spi_enabled_, receiver_disabled_);
-  fflush(stdout);
 
   /* Initialise radio if SPI is available */
   if (spi_enabled_) {
@@ -308,14 +296,15 @@ void SH4RfComponent::setup() {
     initialized_ = true;
   }
 
-  printf("[SH4RF] calling set_receiver(%d)\n", !receiver_disabled_);
-  fflush(stdout);
   set_receiver(!receiver_disabled_);
-  printf("[SH4RF] setup() done\n"); fflush(stdout);
 }
 
 void SH4RfComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "SH4 RF (CMT2300A 433.92 MHz OOK):");
+  if (is_failed()) {
+    ESP_LOGE(TAG, "  Component FAILED during setup()!");
+    return;
+  }
   if (spi_enabled_) {
     LOG_PIN("  SCLK:  ", sclk_);
     LOG_PIN("  SDIO:  ", sdio_);
@@ -332,6 +321,10 @@ void SH4RfComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "  Start pulse: %u – %u µs", start_pulse_min_us_, start_pulse_max_us_);
   ESP_LOGCONFIG(TAG, "  End pulse:   %u µs", end_pulse_us_);
   ESP_LOGCONFIG(TAG, "  Receiver:    %s", receiver_disabled_ ? "disabled" : "enabled");
+  /* Report actual runtime state (set during setup(), visible after WiFi connects) */
+  ESP_LOGCONFIG(TAG, "  ISR buffer:  %s (ptr=%p)",
+                store_.buffer != nullptr ? "ALLOCATED - receiver running" : "NULL - receiver NOT started",
+                (void*)store_.buffer);
 }
 
 /* =======================================================================
@@ -475,20 +468,6 @@ void IRAM_ATTR SH4RfComponent::send_internal(uint32_t send_times, uint32_t send_
    ======================================================================= */
 
 void SH4RfComponent::loop() {
-  if (first_loop_) {
-    first_loop_ = false;
-    ESP_LOGE(TAG, "=== first loop() report ===");
-    ESP_LOGE(TAG, "  is_failed=%d receiver_disabled=%d initialized=%d",
-             is_failed(), receiver_disabled_, initialized_);
-    ESP_LOGE(TAG, "  buffer ptr=%p write_at=%u read_at=%u",
-             (void*)store_.buffer, store_.buffer_write_at, store_.buffer_read_at);
-    if (store_.buffer == nullptr) {
-      ESP_LOGE(TAG, "  >> buffer is NULL: set_receiver() was NOT called or failed");
-    } else {
-      ESP_LOGE(TAG, "  >> buffer allocated: set_receiver() ran OK");
-    }
-  }
-
   if (receiver_disabled_) return;
   if (rx_mode_ == RxMode::DIRECT) process_direct_rx_();
   else                             process_fifo_rx_();
