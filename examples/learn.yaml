@@ -2,24 +2,22 @@
 # ============================================================
 # LEARN MODE: capture raw RF codes from a remote control
 # ============================================================
-# 1. Flash this YAML to your CBU device
-# 2. Open ESPHome logs
-# 3. Press a button on your 433 MHz remote control
-# 4. Copy the "Received Raw:" values from the logs
-# 5. Paste them into examples/replay.yaml
-# ============================================================
 #
-# Adjust pin numbers to match your board:
+# Pinout confirmed by firmware reverse engineering (bk7231tools
+# dissect_dump + ARM Thumb-2 disassembly of CMT2300A_InitGpio):
 #
-#   Variant A (S11, Moes UFO-R2-RF) - SCLK/SDIO connected:
-#     spi_enabled: true
-#     sclk_pin: P22, sdio_pin: P28, csb_pin: P26, fcsb_pin: P16
-#     tx_pin: P7, rx_pin: P8
+#   Signal        | CBU pin | Notes
+#   --------------|---------|--------------------------------
+#   SCLK          | P14     | SPI clock
+#   SDIO          | P16     | SPI data (bidirectional)
+#   CSB           | P6      | Register chip select
+#   FCSB          | P26     | FIFO chip select
+#   GPIO1 / DIN   | P22     | TX data input
+#   GPIO2 / DOUT  | P20     | RX demodulated output
 #
-#   Variant B (no-name IR+RF blaster) - SCLK/SDIO not connected:
-#     spi_enabled: false
-#     csb_pin: P6, fcsb_pin: P26
-#     tx_pin: P22, rx_pin: P20
+# NOTE: SCLK (P14) and SDIO (P16) may not show continuity on a
+# multimeter because the traces run under the SH4 module.
+# They ARE connected - confirmed by firmware disassembly.
 
 substitutions:
   device_name: cbu-rf-bridge
@@ -35,11 +33,9 @@ bk72xx:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
-  ap:
-    ssid: "${device_name}-ap"
 
 logger:
-  level: DEBUG   # must be DEBUG or higher to see Received Raw output
+  level: DEBUG
 
 api:
 ota:
@@ -52,16 +48,17 @@ external_components:
       ref: main
     components: [sh4_rf]
 
-# ---- Variant B (no-name blaster, SCLK/SDIO not connected) ----
 sh4_rf:
   id: rf
-  spi_enabled: false        # set true for Variant A (S11 / Moes)
+  spi_enabled: true          # SCLK/SDIO confirmed connected at P14/P16
+  sclk_pin: P14
+  sdio_pin: P16
   csb_pin:  P6
   fcsb_pin: P26
-  tx_pin:   P22             # CBU pin wired to SH4 GPIO1/DIN
-  rx_pin:   P20             # CBU pin wired to SH4 GPIO2/DOUT
-  rx_mode:  direct          # direct (default) or fifo
-  dump: raw                 # print all received codes to the log
+  tx_pin:   P22              # GPIO1/DIN
+  rx_pin:   P20              # GPIO2/DOUT
+  rx_mode:  direct
+  dump: raw
   receiver_disabled: false
   filter: 50us
   tolerance: 25%
@@ -70,7 +67,6 @@ sh4_rf:
   end_pulse: 50ms
   buffer_size: 2000
 
-# Switch to enable/disable the receiver from Home Assistant
 switch:
   - platform: template
     name: "RF Receiver"
@@ -83,36 +79,6 @@ switch:
     on_turn_off:
       - sh4_rf.turn_off_receiver:
           receiver_id: rf
-
-# Optional: RX mode switch (direct vs FIFO)
-# select:
-#   - platform: template
-#     name: "RX Mode"
-#     options: ["direct", "fifo"]
-#     initial_option: "direct"
-#     optimistic: true
-#     on_value:
-#       - if:
-#           condition:
-#             lambda: 'return x == "fifo";'
-#           then:
-#             - sh4_rf.set_rx_mode:
-#                 receiver_id: rf
-#                 mode: fifo
-#           else:
-#             - sh4_rf.set_rx_mode:
-#                 receiver_id: rf
-#                 mode: direct
-
-# Optional: status LED (P9 on S11)
-# output:
-#   - platform: gpio
-#     id: status_led
-#     pin: P9
-# light:
-#   - platform: binary
-#     name: "Status LED"
-#     output: status_led
 
 sensor:
   - platform: wifi_signal
