@@ -198,30 +198,45 @@ bool SH4RfComponent::start_tx() {
       initialized_ = true;
     }
 
-    /* GPIO1 = DIN/DOUT, GPIO2 = INT2 */
-    spi_write_reg(CMT2300A_REG_IO_SEL,
-                  CMT2300A_GPIO1_DOUT | CMT2300A_GPIO2_INT2 | CMT2300A_GPIO3_DOUT);
+    /*
+     * Exact StartTx() sequence from Tuya firmware disassembly:
+     *
+     * 1. ConfigGpio(IO_SEL=0x0A)   GPIO1=DCLK, GPIO2=INT1
+     * 2. WriteReg(INT_EN=0x68, 0x3D)
+     * 3. GoSleep
+     * 4. EnableTxDin(true)         WriteReg(0x62, val|0x20)  enable DIN input
+     * 5. EnableTxDinInvert(true)   WriteReg(0x69, val|0x02)  invert DIN
+     * 6. GoSleep (again)
+     * Note: GoTx is NOT called here - the CBU drives DIN directly
+     *       and the CMT2300A enters TX mode automatically when DIN is asserted
+     */
 
-    /* Enable TX DIN input on GPIO1, non-inverted */
+    /* Step 1: IO_SEL = 0x0A */
+    uint8_t io = spi_read_reg(CMT2300A_REG_IO_SEL);
+    io = (io & ~0x1Fu) | 0x0Au;
+    spi_write_reg(CMT2300A_REG_IO_SEL, io);
+
+    /* Step 2: INT_EN = 0x3D */
+    spi_write_reg(CMT2300A_REG_INT_EN, 0x3D);
+
+    /* Step 3: GoSleep */
+    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_SLEEP);
+    wait_state_(CMT2300A_STA_SLEEP);
+
+    /* Step 4: EnableTxDin(true) - set bit5 of reg 0x62 */
+    uint8_t r62 = spi_read_reg(0x62);
+    spi_write_reg(0x62, r62 | 0x20u);
+
+    /* Step 5: EnableTxDinInvert(true) - set bit1 of FIFO_CTL(0x69) */
     uint8_t fifo = spi_read_reg(CMT2300A_REG_FIFO_CTL);
-    fifo |=  CMT2300A_TX_DIN_EN;
-    fifo &= ~CMT2300A_TX_DIN_SEL; /* select GPIO1 */
-    spi_write_reg(CMT2300A_REG_FIFO_CTL, fifo);
-    spi_write_reg(CMT2300A_REG_INT2_CTL,
-                  spi_read_reg(CMT2300A_REG_INT2_CTL) & ~CMT2300A_TX_DIN_INV);
+    spi_write_reg(CMT2300A_REG_FIFO_CTL, fifo | 0x02u);
 
-    if (!go_state_(CMT2300A_GO_SLEEP, CMT2300A_STA_SLEEP)) {
-      ESP_LOGE(TAG, "TX: cannot reach SLEEP"); return false;
-    }
-    if (!go_state_(CMT2300A_GO_STBY, CMT2300A_STA_STBY)) {
-      ESP_LOGE(TAG, "TX: cannot reach STBY"); return false;
-    }
-    if (!go_state_(CMT2300A_GO_TX, CMT2300A_STA_TX)) {
-      ESP_LOGE(TAG, "TX: cannot reach TX"); return false;
-    }
+    /* Step 6: GoSleep again */
+    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_SLEEP);
+    wait_state_(CMT2300A_STA_SLEEP);
+
+    ESP_LOGD(TAG, "CMT2300A TX mode ready");
   }
-  /* Variant B: no SPI config needed, CMT2300A is already in direct mode */
-  ESP_LOGD(TAG, "CMT2300A TX mode");
   return true;
 }
 
