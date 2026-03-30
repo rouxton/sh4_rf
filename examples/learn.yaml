@@ -56,7 +56,9 @@ sh4_rf:
   csb_pin:  P6
   fcsb_pin: P26
   tx_pin:   P22              # GPIO1/DIN
-  rx_pin:   P20              # GPIO2/DOUT
+  rx_pin:
+    number: P20
+    inverted: true           # DOUT is active-high; invert for remote_base pipeline
   rx_mode:  direct
   dump: raw
   receiver_disabled: false
