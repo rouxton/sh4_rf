@@ -35,7 +35,7 @@ CONF_START_PULSE_MIN     = "start_pulse_min"
 CONF_START_PULSE_MAX     = "start_pulse_max"
 CONF_END_PULSE           = "end_pulse"
 CONF_RECEIVER_ID         = "receiver_id"
-CONF_MODE                = "mode"
+CONF_LED_PIN = "led_pin"
 
 AUTO_LOAD    = ["remote_base"]
 DEPENDENCIES = ["libretiny"]
@@ -139,6 +139,9 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_TX_PIN): pins.internal_gpio_output_pin_schema,  # → SH4 GPIO1/DIN
         cv.Required(CONF_RX_PIN): pins.internal_gpio_input_pin_schema,   # ← SH4 GPIO2/DOUT
 
+        # --- Optional status LED ---
+        cv.Optional(CONF_LED_PIN): pins.internal_gpio_output_pin_schema,
+
         # --- Variant selection ---
         cv.Optional(CONF_SPI_ENABLED, default=True): cv.boolean,
 
@@ -202,6 +205,10 @@ async def to_code(config):
     triggers = await remote_base.build_triggers(config)
     for trigger in triggers:
         cg.add(var.register_listener(trigger))
+
+    if CONF_LED_PIN in config:
+        led = await cg.gpio_pin_expression(config[CONF_LED_PIN])
+        cg.add(var.set_led_pin(led))
 
     cg.add(var.set_spi_enabled(spi_enabled))
     cg.add(var.set_rx_mode(config[CONF_RX_MODE]))

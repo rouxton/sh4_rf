@@ -377,6 +377,11 @@ void SH4RfComponent::setup() {
     initialized_ = true;
   }
 
+  if (led_pin_ != nullptr) {
+    led_pin_->setup();
+    led_pin_->digital_write(false);
+  }
+
   set_receiver(!receiver_disabled_);
 }
 
@@ -425,7 +430,15 @@ void IRAM_ATTR HOT SH4RfReceiverStore::gpio_intr(SH4RfReceiverStore *arg) {
   arg->buffer[arg->buffer_write_at = next] = now;
 }
 
-void SH4RfComponent::set_receiver(bool on) {
+void SH4RfComponent::led_blink_(int times, uint32_t on_ms, uint32_t off_ms) {
+  if (led_pin_ == nullptr) return;
+  for (int i = 0; i < times; i++) {
+    led_pin_->digital_write(true);
+    delay(on_ms);
+    led_pin_->digital_write(false);
+    if (i + 1 < times) delay(off_ms);
+  }
+}
   if (on) {
     ESP_LOGD(TAG, "Starting receiver");
     auto &s = store_;
@@ -506,6 +519,9 @@ void SH4RfComponent::space_(uint32_t usec) {
 
 void IRAM_ATTR SH4RfComponent::send_internal(uint32_t send_times, uint32_t send_wait) {
   ESP_LOGD(TAG, "Transmitting RF code (%u repetition(s))", send_times);
+
+  /* 3 rapid blinks = TX start */
+  led_blink_(3, 50, 50);
 
   InterruptLock lock;
   transmitting_ = true;
@@ -614,6 +630,7 @@ void SH4RfComponent::process_direct_rx_() {
 
   receive_started_ = false;
   ESP_LOGD(TAG, "RF frame received (direct mode)");
+  led_blink_(2, 30, 30);
 
   /* Build RemoteReceiver data vector from ring buffer timestamps */
   uint32_t prev = s.buffer_read_at;

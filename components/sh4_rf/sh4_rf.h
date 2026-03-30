@@ -121,6 +121,7 @@ class SH4RfComponent : public Component,
   void set_start_pulse_min_us(uint32_t v)   { start_pulse_min_us_ = v; }
   void set_start_pulse_max_us(uint32_t v)   { start_pulse_max_us_ = v; }
   void set_end_pulse_us(uint32_t v)         { end_pulse_us_ = v; }
+  void set_led_pin(InternalGPIOPin *pin)    { led_pin_ = pin; }
 
   /* --- Runtime actions (callable from YAML automations) -------------- */
   void turn_on_receiver();
@@ -153,6 +154,7 @@ class SH4RfComponent : public Component,
 
   /* Receiver management */
   void set_receiver(bool on);
+  void led_blink_(int times, uint32_t on_ms, uint32_t off_ms);
 
   /* loop() helpers */
   void process_direct_rx_();
@@ -163,6 +165,7 @@ class SH4RfComponent : public Component,
   InternalGPIOPin *sdio_{nullptr};
   InternalGPIOPin *csb_{nullptr};
   InternalGPIOPin *fcsb_{nullptr};
+  InternalGPIOPin *led_pin_{nullptr};  /**< Optional status LED (active high) */
 
   /* RX ISR store */
   SH4RfReceiverStore store_;
