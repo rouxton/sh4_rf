@@ -561,11 +561,7 @@ void IRAM_ATTR SH4RfComponent::send_internal(uint32_t send_times, uint32_t send_
     transmitting_ = true;
     this->RemoteTransmitterBase::pin_->digital_write(false);
 
-    /* Assert DIN high: CMT2300A starts modulating the PA */
-    this->RemoteTransmitterBase::pin_->digital_write(true);
-
     target_time_ = 0;
-    space_(2500); /* brief leading space to compensate internal latency */
 
     for (uint32_t rep = 0; rep < send_times; rep++) {
       for (int32_t item : this->RemoteTransmitterBase::temp_.get_data()) {
@@ -575,7 +571,6 @@ void IRAM_ATTR SH4RfComponent::send_internal(uint32_t send_times, uint32_t send_
       if (rep + 1 < send_times && send_wait > 0) space_(send_wait);
     }
 
-    space_(2000);          /* trailing space to terminate cleanly */
     await_target_time_();
     this->RemoteTransmitterBase::pin_->digital_write(false);
     transmitting_ = false;
