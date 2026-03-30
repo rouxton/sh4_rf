@@ -39,6 +39,7 @@ static inline void pin_lo(InternalGPIOPin *p)  { p->digital_write(false); }
 
 /** Send one byte MSB-first on SDIO (SDIO must be configured as output). */
 static void spi_send_byte(InternalGPIOPin *sclk, InternalGPIOPin *sdio, uint8_t byte) {
+  /* CPOL=0 CPHA=0: set data on falling SCLK, clock high, repeat */
   for (int i = 7; i >= 0; i--) {
     pin_lo(sclk);
     if (byte & (1u << i)) pin_hi(sdio); else pin_lo(sdio);
@@ -49,7 +50,8 @@ static void spi_send_byte(InternalGPIOPin *sclk, InternalGPIOPin *sdio, uint8_t 
   pin_lo(sclk);
 }
 
-/** Receive one byte MSB-first from SDIO (SDIO must be configured as input). */
+/** Receive one byte MSB-first from SDIO (SDIO must be configured as input).
+ *  Tuya firmware: SCLK_LOW, SCLK_HIGH, then read bit (sample on rising edge). */
 static uint8_t spi_recv_byte(InternalGPIOPin *sclk, InternalGPIOPin *sdio) {
   uint8_t val = 0;
   for (int i = 7; i >= 0; i--) {
@@ -57,6 +59,7 @@ static uint8_t spi_recv_byte(InternalGPIOPin *sclk, InternalGPIOPin *sdio) {
     delayMicroseconds(1);
     pin_hi(sclk);
     delayMicroseconds(1);
+    /* Sample AFTER rising edge - matches Tuya firmware recv_byte */
     if (sdio->digital_read()) val |= (1u << i);
   }
   pin_lo(sclk);
@@ -64,24 +67,42 @@ static uint8_t spi_recv_byte(InternalGPIOPin *sclk, InternalGPIOPin *sdio) {
 }
 
 void SH4RfComponent::spi_write_reg(uint8_t addr, uint8_t data) {
-  pin_lo(csb_);
+  /* Tuya firmware sequence:
+     SDIO=HIGH, SCLK=OUTPUT, SCLK=LOW, FCSB=HIGH, CSB=LOW,
+     send(addr & 0x7F), send(data), SCLK=LOW, CSB=HIGH,
+     SDIO=HIGH, SDIO=INPUT, FCSB=HIGH */
+  pin_hi(sdio_);
   sdio_->pin_mode(gpio::FLAG_OUTPUT);
-  spi_send_byte(sclk_, sdio_, (addr << 1) & 0xFE); /* addr | W=0 */
+  pin_lo(sclk_);
+  pin_hi(fcsb_);
+  pin_lo(csb_);
+  spi_send_byte(sclk_, sdio_, addr & 0x7F);  /* W: bit7=0 */
   spi_send_byte(sclk_, sdio_, data);
+  pin_lo(sclk_);
   pin_hi(csb_);
+  pin_hi(sdio_);
+  sdio_->pin_mode(gpio::FLAG_INPUT);
+  pin_hi(fcsb_);
 }
 
 uint8_t SH4RfComponent::spi_read_reg(uint8_t addr) {
-  pin_lo(csb_);
+  /* Tuya firmware sequence:
+     SDIO=HIGH, SCLK=OUTPUT, SCLK=LOW, FCSB=HIGH, CSB=LOW,
+     send(addr | 0x80), SDIO=INPUT, recv(), SCLK=LOW, CSB=HIGH,
+     SDIO=INPUT, FCSB=HIGH */
+  pin_hi(sdio_);
   sdio_->pin_mode(gpio::FLAG_OUTPUT);
-  spi_send_byte(sclk_, sdio_, (addr << 1) | 0x01); /* addr | R=1 */
-  /* Switch SDIO to input BEFORE driving SCLK for data bits */
   pin_lo(sclk_);
+  pin_hi(fcsb_);
+  pin_lo(csb_);
+  spi_send_byte(sclk_, sdio_, addr | 0x80);  /* R: bit7=1 */
+  /* Switch to input before clock cycles for data */
   sdio_->pin_mode(gpio::FLAG_INPUT);
-  delayMicroseconds(2);
   uint8_t val = spi_recv_byte(sclk_, sdio_);
+  pin_lo(sclk_);
   pin_hi(csb_);
-  sdio_->pin_mode(gpio::FLAG_OUTPUT);
+  sdio_->pin_mode(gpio::FLAG_INPUT);
+  pin_hi(fcsb_);
   return val;
 }
 
