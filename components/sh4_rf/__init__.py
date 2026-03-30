@@ -26,8 +26,7 @@ CONF_SCLK_PIN            = "sclk_pin"
 CONF_SDIO_PIN            = "sdio_pin"
 CONF_CSB_PIN             = "csb_pin"
 CONF_FCSB_PIN            = "fcsb_pin"
-CONF_TX_PIN              = "tx_pin"
-CONF_RX_PIN              = "rx_pin"
+CONF_DATA_PIN            = "data_pin"   # bidirectional TX/RX pin (P20)
 CONF_SPI_ENABLED         = "spi_enabled"
 CONF_RX_MODE             = "rx_mode"
 CONF_RECEIVER_DISABLED   = "receiver_disabled"
@@ -136,9 +135,8 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_CSB_PIN):  pins.internal_gpio_output_pin_schema,
         cv.Required(CONF_FCSB_PIN): pins.internal_gpio_output_pin_schema,
 
-        # --- Data pins ---
-        cv.Required(CONF_TX_PIN): pins.internal_gpio_output_pin_schema,  # → SH4 GPIO1/DIN
-        cv.Required(CONF_RX_PIN): pins.internal_gpio_input_pin_schema,   # ← SH4 GPIO2/DOUT
+        # --- Bidirectional data pin (TX and RX share the same pin P20) ---
+        cv.Required(CONF_DATA_PIN): pins.internal_gpio_pin_schema,
 
         # --- Optional status LED ---
         cv.Optional(CONF_LED_PIN): pins.internal_gpio_output_pin_schema,
@@ -191,10 +189,9 @@ async def to_code(config):
     sdio = await cg.gpio_pin_expression(config[CONF_SDIO_PIN]) if CONF_SDIO_PIN in config else cg.nullptr
     csb  = await cg.gpio_pin_expression(config[CONF_CSB_PIN])
     fcsb = await cg.gpio_pin_expression(config[CONF_FCSB_PIN])
-    tx   = await cg.gpio_pin_expression(config[CONF_TX_PIN])
-    rx   = await cg.gpio_pin_expression(config[CONF_RX_PIN])
+    data = await cg.gpio_pin_expression(config[CONF_DATA_PIN])
 
-    var = cg.new_Pvariable(config[CONF_ID], sclk, sdio, csb, fcsb, tx, rx)
+    var = cg.new_Pvariable(config[CONF_ID], sclk, sdio, csb, fcsb, data, data)
     await cg.register_component(var, config)
 
     # ESPHome 2026.x API: build_dumpers(config[CONF_DUMP]) returns a list,

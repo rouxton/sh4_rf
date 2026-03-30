@@ -96,8 +96,8 @@ class SH4RfComponent : public Component,
    * @param sdio  SPI data pin  (may be nullptr if spi_enabled=false)
    * @param csb   Register chip select (active low)
    * @param fcsb  FIFO chip select (active low)
-   * @param tx    DIN data pin → CBU drives this to modulate the PA
-   * @param rx    DOUT data pin ← CMT2300A demodulated output
+   * @param tx    Bidirectional data pin (P20) - switched OUTPUT for TX, INPUT for RX
+   * @param rx    Same pin as tx (P20) - both args receive the same InternalGPIOPin*
    */
   SH4RfComponent(InternalGPIOPin *sclk, InternalGPIOPin *sdio,
                  InternalGPIOPin *csb,  InternalGPIOPin *fcsb,

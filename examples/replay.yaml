@@ -1,14 +1,5 @@
 # sh4_rf - examples/replay.yaml
-# ============================================================
-# REPLAY MODE: send learned RF codes + Home Assistant integration
-# ============================================================
-# Replace the raw[] values below with the codes captured in
-# learn mode (copy from the ESPHome log "Received Raw:" lines).
-#
-# Format:
-#   positive values = mark duration in microseconds
-#   negative values = space duration in microseconds
-# ============================================================
+# Replace the code: values with your captured codes from learn mode.
 
 substitutions:
   device_name: cbu-rf-bridge
@@ -39,113 +30,74 @@ external_components:
       ref: main
     components: [sh4_rf]
 
-# ---- Variant B (no-name blaster, SCLK/SDIO not connected) ----
 sh4_rf:
   id: rf
-  spi_enabled: false
+  spi_enabled: true
+  sclk_pin: P14
+  sdio_pin: P16
   csb_pin:  P6
   fcsb_pin: P26
-  tx_pin:
-    number: P20              # Tuya uses P20 for both TX and RX (bidirectional)
-    inverted: true
-  rx_pin:
+  data_pin:
     number: P20
     inverted: true
+  led_pin:  P9
   rx_mode:  direct
-  dump: raw                 # keep enabled to allow learning new codes at runtime
-  receiver_disabled: false  # set true to disable receiver when not needed
+  dump: raw
+  receiver_disabled: false
   filter: 50us
   tolerance: 25%
   start_pulse_min: 4ms
   start_pulse_max: 12ms
   end_pulse: 50ms
-
-# ---- RF TX buttons ----
-# Replace the raw[] values with your captured codes.
-# The example below uses placeholder values for a ceiling fan remote.
-# Repeat 3 times with 40ms gap between repetitions (adjust as needed).
+  buffer_size: 2000
 
 button:
   - platform: template
-    name: "Fan Speed 1"
+    name: "Toggle Light"
     on_press:
       - remote_transmitter.transmit_raw:
           transmitter_id: rf
-          code:
-            # ---- REPLACE WITH YOUR CAPTURED CODE ----
-            - 9000
-            - -4500
-            - 560
-            - -1690
-            - 560
-            - -565
-            - 560
-            - -1690
-            - 560
-            - -565
-            - 560
-            - -1690
-            - 560
-            - -1690
-            - 560
-            - -565
-            - 560
-            - -565
-            - 560
-            - -1690
-            - 560
-            - -565
-            - 560
-            - -1690
-            - 560
-            - -10000
+          code: [6035, -344, 406, -719, 751, -375, 375, -719, 751, -375, 375, -751, 719, -375, 407, -688, 781, -344, 407, -688, 750, -375, 751, -375, 751, -388, 362, -719, 751, -375, 375, -725, 401, -688, 406, -719, 751, -375]
           repeat:
-            times: 3
-            wait_time: 40ms
+            times: 8
+            wait_time: 16ms
 
   - platform: template
-    name: "Fan Speed 2"
+    name: "Toggle Hood"
     on_press:
       - remote_transmitter.transmit_raw:
           transmitter_id: rf
-          code:
-            # ---- REPLACE WITH YOUR CAPTURED CODE ----
-            - 9000
-            - -4500
-            - 560
-            - -565
-            - 560
-            - -1690
-            - 560
-            - -10000
+          code: [6034, -375, 375, -719, 782, -343, 376, -719, 750, -375, 406, -719, 750, -347, 404, -719, 750, -375, 375, -719, 750, -344, 782, -344, 750, -375, 406, -688, 750, -375, 376, -750, 375, -750, 719, -375, 750, -344]
           repeat:
-            times: 3
-            wait_time: 40ms
+            times: 8
+            wait_time: 16ms
 
   - platform: template
-    name: "Fan Off"
+    name: "Speed Up"
     on_press:
       - remote_transmitter.transmit_raw:
           transmitter_id: rf
-          code:
-            # ---- REPLACE WITH YOUR CAPTURED CODE ----
-            - 9000
-            - -4500
-            - 560
-            - -1690
-            - 560
-            - -10000
+          code: [5967, -375, 375, -723, 776, -344, 406, -687, 750, -375, 406, -719, 749, -344, 406, -719, 749, -375, 375, -719, 749, -376, 374, -750, 750, -344]
           repeat:
-            times: 3
-            wait_time: 40ms
+            times: 8
+            wait_time: 16ms
 
-# ---- Receiver control ----
+  - platform: template
+    name: "Speed Down"
+    on_press:
+      - remote_transmitter.transmit_raw:
+          transmitter_id: rf
+          code: [5940, -375, 375, -750, 719, -375, 408, -718, 750, -344, 406, -688, 782, -344, 406, -719, 756, -338, 407, -719, 750, -375, 750, -375, 376, -719]
+          repeat:
+            times: 8
+            wait_time: 16ms
+
 switch:
   - platform: template
     name: "RF Receiver"
     id: rf_receiver_switch
     optimistic: true
-    restore_mode: ALWAYS_ON    # matches receiver_disabled: false in sh4_rf config
+    restore_mode: ALWAYS_ON
     on_turn_on:
       - sh4_rf.turn_on_receiver:
           receiver_id: rf

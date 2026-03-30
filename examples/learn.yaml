@@ -3,8 +3,7 @@
 # LEARN MODE: capture raw RF codes from a remote control
 # ============================================================
 #
-# Pinout confirmed by firmware reverse engineering (bk7231tools
-# dissect_dump + ARM Thumb-2 disassembly of CMT2300A_InitGpio):
+# Pinout confirmed by firmware reverse engineering:
 #
 #   Signal        | CBU pin | Notes
 #   --------------|---------|--------------------------------
@@ -12,12 +11,12 @@
 #   SDIO          | P16     | SPI data (bidirectional)
 #   CSB           | P6      | Register chip select
 #   FCSB          | P26     | FIFO chip select
-#   GPIO1 / DIN   | P22     | TX data input
-#   GPIO2 / DOUT  | P20     | RX demodulated output
+#   DATA (TX+RX)  | P20     | Bidirectional: OUTPUT for TX, INPUT for RX
+#   LED           | P9      | Status LED (optional)
 #
-# NOTE: SCLK (P14) and SDIO (P16) may not show continuity on a
-# multimeter because the traces run under the SH4 module.
-# They ARE connected - confirmed by firmware disassembly.
+# NOTE: P20 is used for BOTH TX and RX (confirmed by Tuya firmware disassembly).
+#       The component switches P20 direction automatically:
+#       OUTPUT during transmit, INPUT during receive.
 
 substitutions:
   device_name: cbu-rf-bridge
@@ -55,13 +54,10 @@ sh4_rf:
   sdio_pin: P16
   csb_pin:  P6
   fcsb_pin: P26
-  tx_pin:
-    number: P20              # Tuya uses P20 for both TX and RX (bidirectional)
-    inverted: true
-  rx_pin:
+  data_pin:
     number: P20
-    inverted: true
-  led_pin:  P9              # optional status LED: 3 blinks=TX, 2 blinks=RX frame
+    inverted: true          # CMT2300A DOUT is active-high
+  led_pin:  P9
   rx_mode:  direct
   dump: raw
   receiver_disabled: false
