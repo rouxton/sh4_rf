@@ -238,63 +238,101 @@ bool SH4RfComponent::start_rx() {
 
     if (rx_mode_ == RxMode::DIRECT) {
       /*
-       * Direct mode RX:
-       *   GPIO1 = DCLK (clock output, useful for debugging)
-       *   GPIO2 = DOUT (demodulated data → CBU RX GPIO edge ISR)
-       *   GPIO3 = INT2 (packet-done interrupt, optional)
+       * Direct mode RX — exact sequence from Tuya firmware StartRx() disassembly:
+       *
+       * 1. ConfigInterrupt(INT1=SYNC_OK|SL_TMO)  WriteReg(0x65, 0x15)
+       * 2. ConfigGpio(IO_SEL=0x0A)               GPIO1=DCLK, GPIO2=DOUT
+       * 3. WriteReg(PKT29=0x21)                  FIFO threshold
+       * 4. GoSleep
+       * 5. EnableTxDinInvert(true)               WriteReg(0x67, val|0x20)
+       * 6. WriteReg(FIFO_CTL, val & 0xFA)        disable FIFO merge
+       * 7. GoSleep + GoStby
+       * 8. ConfigInterrupt(0x2B)                 WriteReg(0x65, 0x2B)
+       * 9. ConfigGpio(IO_SEL=0x0C)               GPIO1=DCLK, GPIO2=DOUT, GPIO3=INT2
+       * 10. WriteReg(FIFO_CTL, val & 0xFA)       clear FIFO merge bit
+       * 11. ClearInterruptFlags                  WriteReg(0x6A, 0x3F) + WriteReg(0x6B, 0x3F)
+       * 12. ClearRxFifo                          WriteReg(0x6C, 0x02)
+       * 13. GoRx
        */
-      spi_write_reg(CMT2300A_REG_IO_SEL,
-                    CMT2300A_GPIO1_DCLK | CMT2300A_GPIO2_DOUT | CMT2300A_GPIO3_INT2);
-      spi_write_reg(CMT2300A_REG_INT1_CTL, CMT2300A_INT_SYNC_OK);
-      spi_write_reg(CMT2300A_REG_INT2_CTL, CMT2300A_INT_PKT_OK);
-      spi_write_reg(CMT2300A_REG_INT_EN,   CMT2300A_EN_TX_DONE | CMT2300A_EN_PKT_DONE);
-      /* Disable duty-cycle timers */
-      spi_write_reg(CMT2300A_REG_SYS2, 0x00);
-      /* Merge FIFOs (required even in direct mode for correct operation) */
-      spi_write_reg(CMT2300A_REG_FIFO_CTL,
-                    spi_read_reg(CMT2300A_REG_FIFO_CTL) | CMT2300A_FIFO_MERGE_EN);
-      spi_write_reg(CMT2300A_REG_PKT29, 0x20); /* FIFO threshold = 32 */
+
+      /* Step 1: INT1_CTL = 0x15 (SYNC_OK | SL_TMO) */
+      spi_write_reg(CMT2300A_REG_INT1_CTL, 0x15);
+
+      /* Step 2: IO_SEL = 0x0A: GPIO1=DCLK(0x03), GPIO2=DOUT(0x08) */
+      uint8_t io = spi_read_reg(CMT2300A_REG_IO_SEL);
+      io = (io & ~0x1Fu) | 0x0Au;
+      spi_write_reg(CMT2300A_REG_IO_SEL, io);
+
+      /* Step 3: PKT29 = 0x21 */
+      spi_write_reg(CMT2300A_REG_PKT29, 0x21);
+
+      /* Step 4: GoSleep */
+      spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_SLEEP);
+      wait_state_(CMT2300A_STA_SLEEP);
+
+      /* Step 5: EnableTxDinInvert(true) — set bit5 of INT2_CTL(0x67) */
+      uint8_t int2 = spi_read_reg(CMT2300A_REG_INT2_CTL);
+      spi_write_reg(CMT2300A_REG_INT2_CTL, int2 | 0x20u);
+
+      /* Step 6: FIFO_CTL(0x69) & 0xFA — clear bit1 (FIFO_MERGE_EN=0) */
+      uint8_t fifo = spi_read_reg(CMT2300A_REG_FIFO_CTL);
+      spi_write_reg(CMT2300A_REG_FIFO_CTL, fifo & 0xFAu);
+
+      /* Step 7: GoSleep + GoStby */
+      spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_SLEEP);
+      wait_state_(CMT2300A_STA_SLEEP);
+      spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_STBY);
+      wait_state_(CMT2300A_STA_STBY);
+
+      /* Step 8: INT1_CTL = 0x2B */
+      spi_write_reg(CMT2300A_REG_INT1_CTL, 0x2B);
+
+      /* Step 9: IO_SEL = 0x0C: GPIO1=DCLK(0x03), GPIO2=DOUT(0x08), GPIO3=INT2(0x00→keep) */
+      io = spi_read_reg(CMT2300A_REG_IO_SEL);
+      io = (io & ~0x1Fu) | 0x0Cu;
+      spi_write_reg(CMT2300A_REG_IO_SEL, io);
+
+      /* Step 10: FIFO_CTL & 0xFA again */
+      fifo = spi_read_reg(CMT2300A_REG_FIFO_CTL);
+      spi_write_reg(CMT2300A_REG_FIFO_CTL, fifo & 0xFAu);
+
+      /* Step 11: ClearInterruptFlags */
+      spi_write_reg(CMT2300A_REG_INT_CLR1, 0x3F);
+      spi_write_reg(CMT2300A_REG_INT_CLR2, 0x3F);
+
+      /* Step 12: ClearRxFifo — WriteReg(0x6C, 0x02) */
+      spi_write_reg(CMT2300A_REG_FIFO_CLR, 0x02u);
+
+      /* Step 13: GoRx */
+      if (!go_state_(CMT2300A_GO_RX, CMT2300A_STA_RX)) {
+        ESP_LOGE(TAG, "RX: cannot reach RX state");
+        return false;
+      }
+
+      uint8_t rssi = spi_read_reg(CMT2300A_REG_RSSI_DBM);
+      ESP_LOGD(TAG, "CMT2300A RX mode (direct), RSSI=%d dBm", (int8_t)rssi);
 
     } else {
-      /*
-       * FIFO packet mode RX:
-       *   GPIO1 = INT1 (RX_FIFO_TH interrupt)
-       *   GPIO2 = INT2 (PKT_DONE interrupt)
-       *   GPIO3 = DOUT (demodulated output, for monitoring)
-       * The CMT2300A fills its internal 64-byte FIFO with the
-       * received packet, then triggers INT2 (PKT_DONE). The CBU
-       * reads the FIFO over SPI using FCSB.
-       */
+      /* FIFO mode - keep existing implementation */
       spi_write_reg(CMT2300A_REG_IO_SEL,
                     CMT2300A_GPIO1_INT1 | CMT2300A_GPIO2_INT2 | CMT2300A_GPIO3_DOUT);
-      spi_write_reg(CMT2300A_REG_INT1_CTL, 0x0C); /* RX_FIFO_TH */
+      spi_write_reg(CMT2300A_REG_INT1_CTL, 0x0C);
       spi_write_reg(CMT2300A_REG_INT2_CTL, CMT2300A_INT_PKT_OK);
       spi_write_reg(CMT2300A_REG_INT_EN,   CMT2300A_EN_TX_DONE | CMT2300A_EN_PKT_DONE);
       spi_write_reg(CMT2300A_REG_SYS2, 0x00);
       spi_write_reg(CMT2300A_REG_FIFO_CTL,
                     spi_read_reg(CMT2300A_REG_FIFO_CTL) | CMT2300A_FIFO_MERGE_EN);
       spi_write_reg(CMT2300A_REG_PKT29, 0x20);
+      if (!go_state_(CMT2300A_GO_SLEEP, CMT2300A_STA_SLEEP)) return false;
+      if (!go_state_(CMT2300A_GO_STBY,  CMT2300A_STA_STBY))  return false;
+      spi_write_reg(CMT2300A_REG_FIFO_CLR,  CMT2300A_CLR_RX_FIFO | CMT2300A_CLR_TX_FIFO);
+      spi_write_reg(CMT2300A_REG_INT_CLR1,  0x3F);
+      spi_write_reg(CMT2300A_REG_INT_CLR2,  0x3F);
+      if (!go_state_(CMT2300A_GO_RX, CMT2300A_STA_RX)) {
+        ESP_LOGE(TAG, "RX FIFO: cannot reach RX state");
+        return false;
+      }
     }
-
-    if (!go_state_(CMT2300A_GO_SLEEP, CMT2300A_STA_SLEEP)) {
-      ESP_LOGE(TAG, "RX: cannot reach SLEEP"); return false;
-    }
-    if (!go_state_(CMT2300A_GO_STBY, CMT2300A_STA_STBY)) {
-      ESP_LOGE(TAG, "RX: cannot reach STBY"); return false;
-    }
-
-    /* Clear FIFOs and interrupt flags before going RX */
-    spi_write_reg(CMT2300A_REG_FIFO_CLR,  CMT2300A_CLR_RX_FIFO | CMT2300A_CLR_TX_FIFO);
-    spi_write_reg(CMT2300A_REG_INT_CLR1,  0x3F);
-    spi_write_reg(CMT2300A_REG_INT_CLR2,  0x3F);
-
-    if (!go_state_(CMT2300A_GO_RX, CMT2300A_STA_RX)) {
-      ESP_LOGE(TAG, "RX: cannot reach RX state"); return false;
-    }
-
-    ESP_LOGD(TAG, "CMT2300A RX mode (%s), RSSI=%d dBm",
-             rx_mode_ == RxMode::DIRECT ? "direct" : "FIFO",
-             (int8_t)spi_read_reg(CMT2300A_REG_RSSI_DBM));
   }
   return true;
 }
