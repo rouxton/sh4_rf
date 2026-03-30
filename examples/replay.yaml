@@ -141,7 +141,7 @@ switch:
     name: "RF Receiver"
     id: rf_receiver_switch
     optimistic: true
-    restore_mode: ALWAYS_OFF   # off by default in replay mode
+    restore_mode: ALWAYS_ON    # matches receiver_disabled: false in sh4_rf config
     on_turn_on:
       - sh4_rf.turn_on_receiver:
           receiver_id: rf
