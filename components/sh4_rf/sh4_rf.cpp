@@ -442,8 +442,9 @@ void IRAM_ATTR HOT SH4RfReceiverStore::gpio_intr(SH4RfReceiverStore *arg) {
   const uint32_t next = (arg->buffer_write_at + 1) % arg->buffer_size;
   const bool     lvl  = arg->pin.digital_read();
 
-  /* Even slot = falling edge (mark), odd slot = rising edge (space) */
-  if (lvl != (next % 2 == 1)) return;
+  /* CMT2300A DOUT is active-high: HIGH=mark(carrier), LOW=space
+     Even slot = mark start (rising edge = HIGH), odd slot = space start (falling edge = LOW) */
+  if (lvl != (next % 2 == 0)) return;
   if (next == arg->buffer_read_at) { arg->overflow = true; return; }
   if (now - arg->buffer[arg->buffer_write_at] <= arg->filter_us) return;
 
@@ -469,7 +470,7 @@ void SH4RfComponent::set_receiver(bool on) {
       memset((void *)s.buffer, 0, s.buffer_size * sizeof(uint32_t));
     }
     s.buffer_write_at = s.buffer_read_at =
-        this->RemoteReceiverBase::pin_->digital_read() ? 1 : 0;
+        this->RemoteReceiverBase::pin_->digital_read() ? 0 : 1;  /* HIGH=mark=even slot */
     s.overflow = false;
     this->RemoteReceiverBase::pin_->attach_interrupt(
         SH4RfReceiverStore::gpio_intr, &store_, gpio::INTERRUPT_ANY_EDGE);

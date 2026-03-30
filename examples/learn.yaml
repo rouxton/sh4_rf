@@ -56,7 +56,6 @@ sh4_rf:
   fcsb_pin: P26
   data_pin:
     number: P20
-    inverted: true          # CMT2300A DOUT is active-high
   led_pin:  P9
   rx_mode:  direct
   dump: raw

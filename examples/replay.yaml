@@ -39,7 +39,6 @@ sh4_rf:
   fcsb_pin: P26
   data_pin:
     number: P20
-    inverted: true
   led_pin:  P9
   rx_mode:  direct
   dump: raw
