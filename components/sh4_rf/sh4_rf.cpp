@@ -356,6 +356,8 @@ bool SH4RfComponent::start_rx() {
   this->RemoteReceiverBase::pin_->pin_mode(gpio::FLAG_INPUT);
   return true;
 }
+
+void SH4RfComponent::go_standby() {
   if (spi_enabled_) {
     spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_STBY);
     wait_state_(CMT2300A_STA_STBY);
