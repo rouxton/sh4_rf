@@ -42,7 +42,9 @@ static void spi_send_byte(InternalGPIOPin *sclk, InternalGPIOPin *sdio, uint8_t 
   for (int i = 7; i >= 0; i--) {
     pin_lo(sclk);
     if (byte & (1u << i)) pin_hi(sdio); else pin_lo(sdio);
+    delayMicroseconds(1);
     pin_hi(sclk);
+    delayMicroseconds(1);
   }
   pin_lo(sclk);
 }
@@ -52,7 +54,9 @@ static uint8_t spi_recv_byte(InternalGPIOPin *sclk, InternalGPIOPin *sdio) {
   uint8_t val = 0;
   for (int i = 7; i >= 0; i--) {
     pin_lo(sclk);
+    delayMicroseconds(1);
     pin_hi(sclk);
+    delayMicroseconds(1);
     if (sdio->digital_read()) val |= (1u << i);
   }
   pin_lo(sclk);
@@ -71,8 +75,10 @@ uint8_t SH4RfComponent::spi_read_reg(uint8_t addr) {
   pin_lo(csb_);
   sdio_->pin_mode(gpio::FLAG_OUTPUT);
   spi_send_byte(sclk_, sdio_, (addr << 1) | 0x01); /* addr | R=1 */
-  /* Switch SDIO to input BEFORE the falling edge that clocks in data bit 7 */
+  /* Switch SDIO to input BEFORE driving SCLK for data bits */
+  pin_lo(sclk_);
   sdio_->pin_mode(gpio::FLAG_INPUT);
+  delayMicroseconds(2);
   uint8_t val = spi_recv_byte(sclk_, sdio_);
   pin_hi(csb_);
   sdio_->pin_mode(gpio::FLAG_OUTPUT);
@@ -111,11 +117,35 @@ bool SH4RfComponent::go_state_(uint8_t cmd, uint8_t expected) {
    ======================================================================= */
 
 bool SH4RfComponent::cmt_init() {
-  /* Soft reset */
-  spi_write_reg(0x7F, 0xFF);
+  /* Ensure CSB is high before starting */
+  pin_hi(csb_);
+  pin_lo(sclk_);
   delay(5);
 
-  /* Load all 6 configuration banks in the order specified by Tuya BSP */
+  /* Soft reset */
+  spi_write_reg(0x7F, 0xFF);
+  delay(20);  /* give CMT2300A time to reset */
+
+  /* Verify presence: product_id register (0x01) must read 0x66 for CMT2300A */
+  uint8_t pid = spi_read_reg(0x01);
+  ESP_LOGD(TAG, "CMT2300A product_id=0x%02X (expect 0x66)", pid);
+
+  if (pid != 0x66) {
+    /* Try once more after longer delay - CMT2300A may need more time after POR */
+    delay(50);
+    pid = spi_read_reg(0x01);
+    ESP_LOGD(TAG, "CMT2300A product_id retry=0x%02X", pid);
+  }
+
+  if (pid != 0x66) {
+    ESP_LOGE(TAG, "CMT2300A not found! product_id=0x%02X (expected 0x66)", pid);
+    ESP_LOGE(TAG, "  Check: SCLK=P14, SDIO=P16, CSB=P6");
+    return false;
+  }
+
+  ESP_LOGD(TAG, "CMT2300A found OK");
+
+  /* Load all 6 configuration banks */
   spi_write_bank(CMT2300A_CMT_BANK_ADDR,       CMT_BANK_433,       CMT2300A_CMT_BANK_SIZE);
   spi_write_bank(CMT2300A_SYSTEM_BANK_ADDR,    SYSTEM_BANK_433,    CMT2300A_SYSTEM_BANK_SIZE);
   spi_write_bank(CMT2300A_FREQUENCY_BANK_ADDR, FREQUENCY_BANK_433, CMT2300A_FREQUENCY_BANK_SIZE);
@@ -130,14 +160,6 @@ bool SH4RfComponent::cmt_init() {
   uint8_t tmp = spi_read_reg(CMT2300A_REG_CMT10) & ~0x07u;
   spi_write_reg(CMT2300A_REG_CMT10, tmp | 0x02u);
 
-  /* Verify presence: product_id register (0x01) must read 0x66 for CMT2300A */
-  uint8_t pid = spi_read_reg(0x01);
-  if (pid != 0x66) {
-    ESP_LOGE(TAG, "CMT2300A not found! reg[0x01]=0x%02X (expected 0x66)", pid);
-    return false;
-  }
-
-  ESP_LOGD(TAG, "CMT2300A product_id=0x66 OK");
   return true;
 }
 
