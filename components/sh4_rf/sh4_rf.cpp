@@ -439,6 +439,8 @@ void SH4RfComponent::led_blink_(int times, uint32_t on_ms, uint32_t off_ms) {
     if (i + 1 < times) delay(off_ms);
   }
 }
+
+void SH4RfComponent::set_receiver(bool on) {
   if (on) {
     ESP_LOGD(TAG, "Starting receiver");
     auto &s = store_;
