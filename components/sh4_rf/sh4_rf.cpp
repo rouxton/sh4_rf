@@ -233,15 +233,13 @@ bool SH4RfComponent::start_tx() {
 
     /* Step 6: GoSleep again */
     spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_SLEEP);
-    wait_state_(CMT2300A_STA_SLEEP);
+    delay(2);
 
-    /* Step 7: GoStby + GoTx - PA must be active to emit RF */
-    if (!go_state_(CMT2300A_GO_STBY, CMT2300A_STA_STBY)) {
-      ESP_LOGE(TAG, "TX: cannot reach STBY"); return false;
-    }
-    if (!go_state_(CMT2300A_GO_TX, CMT2300A_STA_TX)) {
-      ESP_LOGE(TAG, "TX: cannot reach TX state"); return false;
-    }
+    /* Step 7: GoStby + GoTx (no wait - Tuya firmware doesn't poll state) */
+    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_STBY);
+    delay(2);
+    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_TX);
+    delay(2);
 
     ESP_LOGD(TAG, "CMT2300A TX mode ready");
   }
@@ -294,7 +292,7 @@ bool SH4RfComponent::start_rx() {
 
       /* Step 4: GoSleep */
       spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_SLEEP);
-      wait_state_(CMT2300A_STA_SLEEP);
+      delay(2);
 
       /* Step 5: EnableTxDinInvert(true) — set bit5 of INT2_CTL(0x67) */
       uint8_t int2 = spi_read_reg(CMT2300A_REG_INT2_CTL);
@@ -306,14 +304,14 @@ bool SH4RfComponent::start_rx() {
 
       /* Step 7: GoSleep + GoStby */
       spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_SLEEP);
-      wait_state_(CMT2300A_STA_SLEEP);
+      delay(2);
       spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_STBY);
-      wait_state_(CMT2300A_STA_STBY);
+      delay(2);
 
       /* Step 8: INT1_CTL = 0x2B */
       spi_write_reg(CMT2300A_REG_INT1_CTL, 0x2B);
 
-      /* Step 9: IO_SEL = 0x0C: GPIO1=DCLK(0x03), GPIO2=DOUT(0x08), GPIO3=INT2(0x00→keep) */
+      /* Step 9: IO_SEL = 0x0C */
       io = spi_read_reg(CMT2300A_REG_IO_SEL);
       io = (io & ~0x1Fu) | 0x0Cu;
       spi_write_reg(CMT2300A_REG_IO_SEL, io);
@@ -326,14 +324,12 @@ bool SH4RfComponent::start_rx() {
       spi_write_reg(CMT2300A_REG_INT_CLR1, 0x3F);
       spi_write_reg(CMT2300A_REG_INT_CLR2, 0x3F);
 
-      /* Step 12: ClearRxFifo — WriteReg(0x6C, 0x02) */
+      /* Step 12: ClearRxFifo */
       spi_write_reg(CMT2300A_REG_FIFO_CLR, 0x02u);
 
       /* Step 13: GoRx */
-      if (!go_state_(CMT2300A_GO_RX, CMT2300A_STA_RX)) {
-        ESP_LOGE(TAG, "RX: cannot reach RX state");
-        return false;
-      }
+      spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_RX);
+      delay(2);
 
       uint8_t rssi = spi_read_reg(CMT2300A_REG_RSSI_DBM);
       ESP_LOGD(TAG, "CMT2300A RX mode (direct), RSSI=%d dBm", (int8_t)rssi);
