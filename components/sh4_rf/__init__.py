@@ -136,7 +136,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_FCSB_PIN): pins.internal_gpio_output_pin_schema,
 
         # --- Bidirectional data pin (TX and RX share the same pin P20) ---
-        cv.Required(CONF_DATA_PIN): pins.internal_gpio_pin_schema,
+        cv.Required(CONF_DATA_PIN): pins.internal_gpio_output_pin_schema,
 
         # --- Optional status LED ---
         cv.Optional(CONF_LED_PIN): pins.internal_gpio_output_pin_schema,
