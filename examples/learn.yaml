@@ -55,7 +55,9 @@ sh4_rf:
   sdio_pin: P16
   csb_pin:  P6
   fcsb_pin: P26
-  tx_pin:   P22
+  tx_pin:
+    number: P20              # Tuya uses P20 for both TX and RX (bidirectional)
+    inverted: true
   rx_pin:
     number: P20
     inverted: true

@@ -237,6 +237,9 @@ bool SH4RfComponent::start_tx() {
 
     ESP_LOGD(TAG, "CMT2300A TX mode ready");
   }
+  /* Switch the shared P20 pin to OUTPUT for TX bit-bang */
+  this->RemoteTransmitterBase::pin_->pin_mode(gpio::FLAG_OUTPUT);
+  this->RemoteTransmitterBase::pin_->digital_write(false);
   return true;
 }
 
@@ -349,10 +352,10 @@ bool SH4RfComponent::start_rx() {
       }
     }
   }
+  /* Switch the shared P20 pin back to INPUT for RX edge ISR */
+  this->RemoteReceiverBase::pin_->pin_mode(gpio::FLAG_INPUT);
   return true;
 }
-
-void SH4RfComponent::go_standby() {
   if (spi_enabled_) {
     spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_STBY);
     wait_state_(CMT2300A_STA_STBY);

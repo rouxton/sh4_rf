@@ -45,8 +45,12 @@ sh4_rf:
   spi_enabled: false
   csb_pin:  P6
   fcsb_pin: P26
-  tx_pin:   P22
-  rx_pin:   P20
+  tx_pin:
+    number: P20              # Tuya uses P20 for both TX and RX (bidirectional)
+    inverted: true
+  rx_pin:
+    number: P20
+    inverted: true
   rx_mode:  direct
   dump: raw                 # keep enabled to allow learning new codes at runtime
   receiver_disabled: false  # set true to disable receiver when not needed
