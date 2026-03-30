@@ -547,8 +547,8 @@ void SH4RfComponent::space_(uint32_t usec) {
 void IRAM_ATTR SH4RfComponent::send_internal(uint32_t send_times, uint32_t send_wait) {
   ESP_LOGD(TAG, "Transmitting RF code (%u repetition(s))", send_times);
 
-  /* 3 rapid blinks = TX start */
-  led_blink_(3, 50, 50);
+  /* 3 rapid blinks = TX start (short so it doesn't delay the operation) */
+  led_blink_(3, 20, 20);
 
   /* Prepare CMT2300A for TX BEFORE disabling interrupts */
   if (!start_tx()) {
