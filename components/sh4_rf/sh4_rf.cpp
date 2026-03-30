@@ -235,6 +235,14 @@ bool SH4RfComponent::start_tx() {
     spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_SLEEP);
     wait_state_(CMT2300A_STA_SLEEP);
 
+    /* Step 7: GoStby + GoTx - PA must be active to emit RF */
+    if (!go_state_(CMT2300A_GO_STBY, CMT2300A_STA_STBY)) {
+      ESP_LOGE(TAG, "TX: cannot reach STBY"); return false;
+    }
+    if (!go_state_(CMT2300A_GO_TX, CMT2300A_STA_TX)) {
+      ESP_LOGE(TAG, "TX: cannot reach TX state"); return false;
+    }
+
     ESP_LOGD(TAG, "CMT2300A TX mode ready");
   }
   /* Switch the shared P20 pin to OUTPUT for TX bit-bang */
