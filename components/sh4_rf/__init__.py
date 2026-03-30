@@ -35,7 +35,8 @@ CONF_START_PULSE_MIN     = "start_pulse_min"
 CONF_START_PULSE_MAX     = "start_pulse_max"
 CONF_END_PULSE           = "end_pulse"
 CONF_RECEIVER_ID         = "receiver_id"
-CONF_LED_PIN = "led_pin"
+CONF_LED_PIN             = "led_pin"
+CONF_MODE                = "mode"
 
 AUTO_LOAD    = ["remote_base"]
 DEPENDENCIES = ["libretiny"]
