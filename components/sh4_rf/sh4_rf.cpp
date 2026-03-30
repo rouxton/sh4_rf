@@ -221,7 +221,7 @@ bool SH4RfComponent::start_tx() {
 
     /* Step 3: GoSleep */
     spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_SLEEP);
-    wait_state_(CMT2300A_STA_SLEEP);
+    delay(2);
 
     /* Step 4: EnableTxDin(true) - set bit5 of reg 0x62 */
     uint8_t r62 = spi_read_reg(0x62);
@@ -550,35 +550,36 @@ void IRAM_ATTR SH4RfComponent::send_internal(uint32_t send_times, uint32_t send_
   /* 3 rapid blinks = TX start */
   led_blink_(3, 50, 50);
 
-  InterruptLock lock;
-  transmitting_ = true;
-  this->RemoteTransmitterBase::pin_->digital_write(false);
-
+  /* Prepare CMT2300A for TX BEFORE disabling interrupts */
   if (!start_tx()) {
     ESP_LOGE(TAG, "TX init failed");
-    transmitting_ = false;
     return;
   }
 
-  /* Assert DIN high: CMT2300A starts modulating the PA */
-  this->RemoteTransmitterBase::pin_->digital_write(true);
+  {
+    InterruptLock lock;
+    transmitting_ = true;
+    this->RemoteTransmitterBase::pin_->digital_write(false);
 
-  target_time_ = 0;
-  space_(2500); /* brief leading space to compensate internal latency */
+    /* Assert DIN high: CMT2300A starts modulating the PA */
+    this->RemoteTransmitterBase::pin_->digital_write(true);
 
-  for (uint32_t rep = 0; rep < send_times; rep++) {
-    for (int32_t item : this->RemoteTransmitterBase::temp_.get_data()) {
-      if (item > 0) mark_(static_cast<uint32_t>(item));
-      else          space_(static_cast<uint32_t>(-item));
+    target_time_ = 0;
+    space_(2500); /* brief leading space to compensate internal latency */
+
+    for (uint32_t rep = 0; rep < send_times; rep++) {
+      for (int32_t item : this->RemoteTransmitterBase::temp_.get_data()) {
+        if (item > 0) mark_(static_cast<uint32_t>(item));
+        else          space_(static_cast<uint32_t>(-item));
+      }
+      if (rep + 1 < send_times && send_wait > 0) space_(send_wait);
     }
-    if (rep + 1 < send_times && send_wait > 0) space_(send_wait);
+
+    space_(2000);          /* trailing space to terminate cleanly */
+    await_target_time_();
+    this->RemoteTransmitterBase::pin_->digital_write(false);
+    transmitting_ = false;
   }
-
-  space_(2000);          /* trailing space to terminate cleanly */
-  await_target_time_();
-  this->RemoteTransmitterBase::pin_->digital_write(false);
-
-  transmitting_ = false;
 
   if (!receiver_disabled_) {
     if (!start_rx()) ESP_LOGE(TAG, "Failed to return to RX after TX");
