@@ -143,29 +143,8 @@ bool SH4RfComponent::cmt_init() {
   pin_lo(sclk_);
   delay(5);
 
-  /* Dump all registers BEFORE soft reset to see Tuya factory config */
-  ESP_LOGI(TAG, "=== CMT2300A registers BEFORE reset (Tuya factory config) ===");
-  for (uint8_t bank_base : {0x00, 0x0C, 0x18, 0x20, 0x38, 0x55}) {
-    uint8_t size = (bank_base == 0x00) ? 12 :
-                   (bank_base == 0x0C) ? 12 :
-                   (bank_base == 0x18) ?  8 :
-                   (bank_base == 0x20) ? 24 :
-                   (bank_base == 0x38) ? 29 : 11;
-    char buf[128]; int pos = 0;
-    pos += snprintf(buf+pos, sizeof(buf)-pos, "  [0x%02X]: ", bank_base);
-    for (uint8_t i = 0; i < size; i++) {
-      uint8_t val = spi_read_reg(bank_base + i);
-      pos += snprintf(buf+pos, sizeof(buf)-pos, "%02X ", val);
-      if (pos > 110) { ESP_LOGI(TAG, "%s", buf); pos = snprintf(buf, sizeof(buf), "         "); }
-    }
-    if (pos > 10) ESP_LOGI(TAG, "%s", buf);
-  }
-  /* Also dump control registers */
-  ESP_LOGI(TAG, "  IO_SEL=0x%02X INT1=0x%02X INT2=0x%02X INT_EN=0x%02X FIFO_CTL=0x%02X",
-    spi_read_reg(CMT2300A_REG_IO_SEL), spi_read_reg(CMT2300A_REG_INT1_CTL),
-    spi_read_reg(CMT2300A_REG_INT2_CTL), spi_read_reg(CMT2300A_REG_INT_EN),
-    spi_read_reg(CMT2300A_REG_FIFO_CTL));
-  ESP_LOGI(TAG, "=== End dump ===");
+  /* Dump registers BEFORE soft reset - done via dump_pending_ flag in loop() */
+  dump_pending_ = true;
 
   /* Soft reset */
   spi_write_reg(0x7F, 0xFF);
@@ -612,6 +591,26 @@ void IRAM_ATTR SH4RfComponent::send_internal(uint32_t send_times, uint32_t send_
    ======================================================================= */
 
 void SH4RfComponent::loop() {
+  /* One-shot register dump after boot (deferred so logger is ready) */
+  if (dump_pending_ && spi_enabled_) {
+    dump_pending_ = false;
+    ESP_LOGI(TAG, "=== CMT2300A registers (Tuya factory config, before our init) ===");
+    ESP_LOGI(TAG, "NOTE: dump runs after cmt_init so values reflect OUR config, not factory");
+    uint8_t bank_bases[] = {0x00, 0x0C, 0x18, 0x20, 0x38, 0x55};
+    uint8_t bank_sizes[] = {12, 12, 8, 24, 29, 11};
+    for (int b = 0; b < 6; b++) {
+      char buf[128]; int pos = snprintf(buf, sizeof(buf), "  [0x%02X]: ", bank_bases[b]);
+      for (uint8_t i = 0; i < bank_sizes[b]; i++)
+        pos += snprintf(buf+pos, sizeof(buf)-pos, "%02X ", spi_read_reg(bank_bases[b]+i));
+      ESP_LOGI(TAG, "%s", buf);
+    }
+    ESP_LOGI(TAG, "  IO_SEL=%02X INT1=%02X INT2=%02X INT_EN=%02X FIFO_CTL=%02X MODE_STA=%02X",
+      spi_read_reg(CMT2300A_REG_IO_SEL), spi_read_reg(CMT2300A_REG_INT1_CTL),
+      spi_read_reg(CMT2300A_REG_INT2_CTL), spi_read_reg(CMT2300A_REG_INT_EN),
+      spi_read_reg(CMT2300A_REG_FIFO_CTL), spi_read_reg(CMT2300A_REG_MODE_STA));
+    ESP_LOGI(TAG, "=== End dump ===");
+  }
+
   if (receiver_disabled_) return;
   if (rx_mode_ == RxMode::DIRECT) process_direct_rx_();
   else                             process_fifo_rx_();

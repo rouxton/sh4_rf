@@ -178,6 +178,7 @@ class SH4RfComponent : public Component,
 
   /* Runtime state */
   bool     transmitting_{false};
+  bool     dump_pending_{false};
   bool     receive_started_{false};
   bool     initialized_{false};
   uint32_t target_time_{0};
