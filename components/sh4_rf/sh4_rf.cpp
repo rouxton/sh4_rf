@@ -143,6 +143,30 @@ bool SH4RfComponent::cmt_init() {
   pin_lo(sclk_);
   delay(5);
 
+  /* Dump all registers BEFORE soft reset to see Tuya factory config */
+  ESP_LOGI(TAG, "=== CMT2300A registers BEFORE reset (Tuya factory config) ===");
+  for (uint8_t bank_base : {0x00, 0x0C, 0x18, 0x20, 0x38, 0x55}) {
+    uint8_t size = (bank_base == 0x00) ? 12 :
+                   (bank_base == 0x0C) ? 12 :
+                   (bank_base == 0x18) ?  8 :
+                   (bank_base == 0x20) ? 24 :
+                   (bank_base == 0x38) ? 29 : 11;
+    char buf[128]; int pos = 0;
+    pos += snprintf(buf+pos, sizeof(buf)-pos, "  [0x%02X]: ", bank_base);
+    for (uint8_t i = 0; i < size; i++) {
+      uint8_t val = spi_read_reg(bank_base + i);
+      pos += snprintf(buf+pos, sizeof(buf)-pos, "%02X ", val);
+      if (pos > 110) { ESP_LOGI(TAG, "%s", buf); pos = snprintf(buf, sizeof(buf), "         "); }
+    }
+    if (pos > 10) ESP_LOGI(TAG, "%s", buf);
+  }
+  /* Also dump control registers */
+  ESP_LOGI(TAG, "  IO_SEL=0x%02X INT1=0x%02X INT2=0x%02X INT_EN=0x%02X FIFO_CTL=0x%02X",
+    spi_read_reg(CMT2300A_REG_IO_SEL), spi_read_reg(CMT2300A_REG_INT1_CTL),
+    spi_read_reg(CMT2300A_REG_INT2_CTL), spi_read_reg(CMT2300A_REG_INT_EN),
+    spi_read_reg(CMT2300A_REG_FIFO_CTL));
+  ESP_LOGI(TAG, "=== End dump ===");
+
   /* Soft reset */
   spi_write_reg(0x7F, 0xFF);
   delay(20);  /* give CMT2300A time to reset */
