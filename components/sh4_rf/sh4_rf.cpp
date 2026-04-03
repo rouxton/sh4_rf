@@ -143,9 +143,6 @@ bool SH4RfComponent::cmt_init() {
   pin_lo(sclk_);
   delay(5);
 
-  /* Dump registers BEFORE soft reset - done via dump_pending_ flag in loop() */
-  dump_pending_ = true;
-
   /* Soft reset */
   spi_write_reg(0x7F, 0xFF);
   delay(20);  /* give CMT2300A time to reset */
@@ -195,18 +192,58 @@ bool SH4RfComponent::cmt_init() {
    ======================================================================= */
 
 bool SH4RfComponent::start_tx() {
-  /*
-   * Tuya firmware does NOT reconfigure CMT2300A for TX.
-   * It leaves the chip in RX state and simply switches P20 to OUTPUT.
-   * The CMT2300A in direct mode passes DIN straight to the PA regardless
-   * of the mode register - confirmed by firmware disassembly.
-   */
-  if (spi_enabled_ && !initialized_) {
-    if (!cmt_init()) return false;
-    initialized_ = true;
-    /* After cmt_init, go to RX mode - Tuya always starts in RX */
-    start_rx();
+  if (spi_enabled_) {
+    if (!initialized_) {
+      if (!cmt_init()) return false;
+      initialized_ = true;
+    }
+
+    /*
+     * Exact StartTx() sequence from Tuya firmware disassembly:
+     *
+     * 1. ConfigGpio(IO_SEL=0x0A)   GPIO1=DCLK, GPIO2=INT1
+     * 2. WriteReg(INT_EN=0x68, 0x3D)
+     * 3. GoSleep
+     * 4. EnableTxDin(true)         WriteReg(0x62, val|0x20)  enable DIN input
+     * 5. EnableTxDinInvert(true)   WriteReg(0x69, val|0x02)  invert DIN
+     * 6. GoSleep (again)
+     * Note: GoTx is NOT called here - the CBU drives DIN directly
+     *       and the CMT2300A enters TX mode automatically when DIN is asserted
+     */
+
+    /* Step 1: IO_SEL = 0x0A */
+    uint8_t io = spi_read_reg(CMT2300A_REG_IO_SEL);
+    io = (io & ~0x1Fu) | 0x0Au;
+    spi_write_reg(CMT2300A_REG_IO_SEL, io);
+
+    /* Step 2: INT_EN = 0x3D */
+    spi_write_reg(CMT2300A_REG_INT_EN, 0x3D);
+
+    /* Step 3: GoSleep */
+    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_SLEEP);
+    delay(2);
+
+    /* Step 4: EnableTxDin(true) - set bit5 of reg 0x62 */
+    uint8_t r62 = spi_read_reg(0x62);
+    spi_write_reg(0x62, r62 | 0x20u);
+
+    /* Step 5: EnableTxDinInvert(true) - set bit1 of FIFO_CTL(0x69) */
+    uint8_t fifo = spi_read_reg(CMT2300A_REG_FIFO_CTL);
+    spi_write_reg(CMT2300A_REG_FIFO_CTL, fifo | 0x02u);
+
+    /* Step 6: GoSleep again */
+    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_SLEEP);
+    delay(2);
+
+    /* Step 7: GoStby + GoTx (no wait - Tuya firmware doesn't poll state) */
+    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_STBY);
+    delay(2);
+    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_TX);
+    delay(2);
+
+    ESP_LOGD(TAG, "CMT2300A TX mode ready");
   }
+  /* Switch the shared P20 pin to OUTPUT for TX bit-bang */
   this->RemoteTransmitterBase::pin_->pin_mode(gpio::FLAG_OUTPUT);
   this->RemoteTransmitterBase::pin_->digital_write(false);
   return true;
@@ -551,26 +588,6 @@ void IRAM_ATTR SH4RfComponent::send_internal(uint32_t send_times, uint32_t send_
    ======================================================================= */
 
 void SH4RfComponent::loop() {
-  /* One-shot register dump after boot (deferred so logger is ready) */
-  if (dump_pending_ && spi_enabled_) {
-    dump_pending_ = false;
-    ESP_LOGI(TAG, "=== CMT2300A registers (Tuya factory config, before our init) ===");
-    ESP_LOGI(TAG, "NOTE: dump runs after cmt_init so values reflect OUR config, not factory");
-    uint8_t bank_bases[] = {0x00, 0x0C, 0x18, 0x20, 0x38, 0x55};
-    uint8_t bank_sizes[] = {12, 12, 8, 24, 29, 11};
-    for (int b = 0; b < 6; b++) {
-      char buf[128]; int pos = snprintf(buf, sizeof(buf), "  [0x%02X]: ", bank_bases[b]);
-      for (uint8_t i = 0; i < bank_sizes[b]; i++)
-        pos += snprintf(buf+pos, sizeof(buf)-pos, "%02X ", spi_read_reg(bank_bases[b]+i));
-      ESP_LOGI(TAG, "%s", buf);
-    }
-    ESP_LOGI(TAG, "  IO_SEL=%02X INT1=%02X INT2=%02X INT_EN=%02X FIFO_CTL=%02X MODE_STA=%02X",
-      spi_read_reg(CMT2300A_REG_IO_SEL), spi_read_reg(CMT2300A_REG_INT1_CTL),
-      spi_read_reg(CMT2300A_REG_INT2_CTL), spi_read_reg(CMT2300A_REG_INT_EN),
-      spi_read_reg(CMT2300A_REG_FIFO_CTL), spi_read_reg(CMT2300A_REG_MODE_STA));
-    ESP_LOGI(TAG, "=== End dump ===");
-  }
-
   if (receiver_disabled_) return;
   if (rx_mode_ == RxMode::DIRECT) process_direct_rx_();
   else                             process_fifo_rx_();
