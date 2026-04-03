@@ -195,58 +195,12 @@ bool SH4RfComponent::cmt_init() {
    ======================================================================= */
 
 bool SH4RfComponent::start_tx() {
-  if (spi_enabled_) {
-    if (!initialized_) {
-      if (!cmt_init()) return false;
-      initialized_ = true;
-    }
-
-    /*
-     * Exact StartTx() sequence from Tuya firmware disassembly:
-     *
-     * 1. ConfigGpio(IO_SEL=0x0A)   GPIO1=DCLK, GPIO2=INT1
-     * 2. WriteReg(INT_EN=0x68, 0x3D)
-     * 3. GoSleep
-     * 4. EnableTxDin(true)         WriteReg(0x62, val|0x20)  enable DIN input
-     * 5. EnableTxDinInvert(true)   WriteReg(0x69, val|0x02)  invert DIN
-     * 6. GoSleep (again)
-     * Note: GoTx is NOT called here - the CBU drives DIN directly
-     *       and the CMT2300A enters TX mode automatically when DIN is asserted
-     */
-
-    /* Step 1: IO_SEL = 0x0A */
-    uint8_t io = spi_read_reg(CMT2300A_REG_IO_SEL);
-    io = (io & ~0x1Fu) | 0x0Au;
-    spi_write_reg(CMT2300A_REG_IO_SEL, io);
-
-    /* Step 2: INT_EN = 0x3D */
-    spi_write_reg(CMT2300A_REG_INT_EN, 0x3D);
-
-    /* Step 3: GoSleep */
-    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_SLEEP);
-    delay(2);
-
-    /* Step 4: EnableTxDin(true) - set bit5 of reg 0x62 */
-    uint8_t r62 = spi_read_reg(0x62);
-    spi_write_reg(0x62, r62 | 0x20u);
-
-    /* Step 5: EnableTxDinInvert - DISABLED for testing, invert may flip OOK polarity */
-    // uint8_t fifo = spi_read_reg(CMT2300A_REG_FIFO_CTL);
-    // spi_write_reg(CMT2300A_REG_FIFO_CTL, fifo | 0x02u);
-
-    /* Step 6: GoSleep again */
-    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_SLEEP);
-    delay(2);
-
-    /* Step 7: GoStby + GoTx (no wait - Tuya firmware doesn't poll state) */
-    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_STBY);
-    delay(2);
-    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_TX);
-    delay(2);
-
-    ESP_LOGD(TAG, "CMT2300A TX mode ready");
-  }
-  /* Switch the shared P20 pin to OUTPUT for TX bit-bang */
+  /*
+   * Tuya firmware does NOT reconfigure CMT2300A for TX.
+   * It leaves the chip in RX state and simply switches P20 to OUTPUT.
+   * The CMT2300A in direct mode passes DIN straight to the PA regardless
+   * of the mode register - confirmed by firmware disassembly.
+   */
   this->RemoteTransmitterBase::pin_->pin_mode(gpio::FLAG_OUTPUT);
   this->RemoteTransmitterBase::pin_->digital_write(false);
   return true;
