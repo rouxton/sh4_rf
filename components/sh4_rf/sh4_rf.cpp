@@ -201,6 +201,12 @@ bool SH4RfComponent::start_tx() {
    * The CMT2300A in direct mode passes DIN straight to the PA regardless
    * of the mode register - confirmed by firmware disassembly.
    */
+  if (spi_enabled_ && !initialized_) {
+    if (!cmt_init()) return false;
+    initialized_ = true;
+    /* After cmt_init, go to RX mode - Tuya always starts in RX */
+    start_rx();
+  }
   this->RemoteTransmitterBase::pin_->pin_mode(gpio::FLAG_OUTPUT);
   this->RemoteTransmitterBase::pin_->digital_write(false);
   return true;
