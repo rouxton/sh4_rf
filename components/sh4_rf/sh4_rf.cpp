@@ -17,6 +17,19 @@
 
 #include "sh4_rf.h"
 #include "cmt2300a_params_433.h"
+
+/* -----------------------------------------------------------------------
+   BK7231N direct GPIO register access
+   GPIO registers: 0x200a00 + pin*4
+   Bit1 = output value, Bit0 = direction (0=output, 1=input)
+   ----------------------------------------------------------------------- */
+#define BK_GPIO_BASE    0x200a00u
+#define BK_GPIO_REG(p)  (*((volatile uint32_t *)(BK_GPIO_BASE + (p)*4u)))
+#define BK_GPIO_HIGH(p) do { BK_GPIO_REG(p) = (BK_GPIO_REG(p) & ~0x03u) | 0x02u; } while(0)
+#define BK_GPIO_LOW(p)  do { BK_GPIO_REG(p) = (BK_GPIO_REG(p) & ~0x03u); } while(0)
+#define BK_GPIO_OUT(p)  do { BK_GPIO_REG(p) &= ~0x01u; } while(0)  /* bit0=0 = output */
+#define BK_GPIO_IN(p)   do { BK_GPIO_REG(p) |=  0x01u; } while(0)  /* bit0=1 = input  */
+
 #include "esphome/core/log.h"
 #include "esphome/core/application.h"
 
@@ -248,10 +261,10 @@ bool SH4RfComponent::start_tx() {
   /* Detach ISR before switching TX pin to OUTPUT */
   this->RemoteReceiverBase::pin_->detach_interrupt();
   high_freq_.stop();
-  /* Force TX pin (P22/GPIO1/DIN) to OUTPUT via direct Arduino API */
-  pinMode(tx_pin_num_, OUTPUT);
-  digitalWrite(tx_pin_num_, LOW);
-  ESP_LOGD(TAG, "TX pin %d set OUTPUT", tx_pin_num_);
+  /* Force TX pin to OUTPUT via direct BK7231N register access */
+  BK_GPIO_OUT(tx_pin_num_);
+  BK_GPIO_LOW(tx_pin_num_);
+  ESP_LOGD(TAG, "TX pin %d set OUTPUT via BK GPIO reg 0x%08x", tx_pin_num_, BK_GPIO_BASE + tx_pin_num_*4);
   return true;
 }
 
@@ -552,13 +565,13 @@ void SH4RfComponent::await_target_time_() {
 
 void SH4RfComponent::mark_(uint32_t usec) {
   await_target_time_();
-  digitalWrite(tx_pin_num_, HIGH);
+  BK_GPIO_HIGH(tx_pin_num_);
   target_time_ += usec;
 }
 
 void SH4RfComponent::space_(uint32_t usec) {
   await_target_time_();
-  digitalWrite(tx_pin_num_, LOW);
+  BK_GPIO_LOW(tx_pin_num_);
   target_time_ += usec;
 }
 
@@ -577,7 +590,7 @@ void IRAM_ATTR SH4RfComponent::send_internal(uint32_t send_times, uint32_t send_
   {
     InterruptLock lock;
     transmitting_ = true;
-    digitalWrite(tx_pin_num_, LOW);
+    BK_GPIO_LOW(tx_pin_num_);
 
     target_time_ = 0;
 
@@ -590,7 +603,7 @@ void IRAM_ATTR SH4RfComponent::send_internal(uint32_t send_times, uint32_t send_
     }
 
     await_target_time_();
-    digitalWrite(tx_pin_num_, LOW);
+    BK_GPIO_LOW(tx_pin_num_);
     transmitting_ = false;
   }
 
