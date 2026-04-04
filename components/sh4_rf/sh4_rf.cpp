@@ -545,14 +545,22 @@ void SH4RfComponent::space_(uint32_t usec) {
 }
 
 void IRAM_ATTR SH4RfComponent::send_internal(uint32_t send_times, uint32_t send_wait) {
-  ESP_LOGD(TAG, "Transmitting RF code (%u repetition(s))", send_times);
+  ESP_LOGI(TAG, "Transmitting RF code (%u repetition(s))", send_times);
 
-  /* 3 rapid blinks = TX start (short so it doesn't delay the operation) */
+  /* 3 rapid blinks = TX start */
   led_blink_(3, 20, 20);
+
+  /* Detach ISR before switching P20 to OUTPUT */
+  this->RemoteReceiverBase::pin_->detach_interrupt();
+  high_freq_.stop();
 
   /* Prepare CMT2300A for TX BEFORE disabling interrupts */
   if (!start_tx()) {
     ESP_LOGE(TAG, "TX init failed");
+    /* Reattach ISR */
+    this->RemoteReceiverBase::pin_->attach_interrupt(
+        SH4RfReceiverStore::gpio_intr, &store_, gpio::INTERRUPT_ANY_EDGE);
+    high_freq_.start();
     return;
   }
 
