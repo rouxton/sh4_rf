@@ -243,11 +243,21 @@ bool SH4RfComponent::start_tx() {
 
     ESP_LOGD(TAG, "CMT2300A TX mode ready");
   }
-  /* Detach ISR, switch P20 to OUTPUT, then bit-bang */
+  /* Detach ISR, switch P20 to OUTPUT using direct Arduino API */
   this->RemoteReceiverBase::pin_->detach_interrupt();
   high_freq_.stop();
-  this->RemoteTransmitterBase::pin_->pin_mode(gpio::FLAG_OUTPUT);
-  this->RemoteTransmitterBase::pin_->digital_write(false);
+  uint8_t pin_num = this->RemoteTransmitterBase::pin_->get_pin();
+  pinMode(pin_num, OUTPUT);
+  digitalWrite(pin_num, LOW);
+  ESP_LOGI(TAG, "P20 set to OUTPUT via direct Arduino API (pin %d)", pin_num);
+  /* Blink test */
+  for (int i = 0; i < 5; i++) {
+    digitalWrite(pin_num, HIGH);
+    delay(10);
+    digitalWrite(pin_num, LOW);
+    delay(10);
+  }
+  ESP_LOGI(TAG, "Blink test done");
   return true;
 }
 
@@ -391,6 +401,7 @@ void SH4RfComponent::setup() {
 
   /* Data pin P20 - setup as INPUT initially (RX), switched to OUTPUT in start_tx() */
   this->RemoteReceiverBase::pin_->setup();
+  tx_pin_num_ = this->RemoteTransmitterBase::pin_->get_pin();
 
   /* ISR store */
   auto &s = store_;
@@ -540,13 +551,13 @@ void SH4RfComponent::await_target_time_() {
 
 void SH4RfComponent::mark_(uint32_t usec) {
   await_target_time_();
-  this->RemoteTransmitterBase::pin_->digital_write(true); /* carrier ON */
+  digitalWrite(tx_pin_num_, HIGH);
   target_time_ += usec;
 }
 
 void SH4RfComponent::space_(uint32_t usec) {
   await_target_time_();
-  this->RemoteTransmitterBase::pin_->digital_write(false); /* carrier OFF */
+  digitalWrite(tx_pin_num_, LOW);
   target_time_ += usec;
 }
 
@@ -572,7 +583,7 @@ void IRAM_ATTR SH4RfComponent::send_internal(uint32_t send_times, uint32_t send_
   {
     InterruptLock lock;
     transmitting_ = true;
-    this->RemoteTransmitterBase::pin_->digital_write(false);
+    digitalWrite(tx_pin_num_, LOW);
 
     target_time_ = 0;
 
@@ -585,7 +596,7 @@ void IRAM_ATTR SH4RfComponent::send_internal(uint32_t send_times, uint32_t send_
     }
 
     await_target_time_();
-    this->RemoteTransmitterBase::pin_->digital_write(false);
+    digitalWrite(tx_pin_num_, LOW);
     transmitting_ = false;
   }
 
