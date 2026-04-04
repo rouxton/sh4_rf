@@ -243,8 +243,6 @@ bool SH4RfComponent::start_tx() {
 
     ESP_LOGD(TAG, "CMT2300A TX mode ready");
   }
-  /* Switch P20 to OUTPUT */
-  this->RemoteTransmitterBase::pin_->pin_mode(gpio::FLAG_OUTPUT);
   this->RemoteTransmitterBase::pin_->digital_write(false);
   return true;
 }
@@ -356,8 +354,6 @@ bool SH4RfComponent::start_rx() {
       }
     }
   }
-  /* Switch P20 back to INPUT */
-  this->RemoteReceiverBase::pin_->pin_mode(gpio::FLAG_INPUT);
   return true;
 }
 
@@ -381,10 +377,11 @@ void SH4RfComponent::setup() {
   if (csb_  != nullptr) { csb_->setup();  csb_->digital_write(true); }
   if (fcsb_ != nullptr) { fcsb_->setup(); fcsb_->digital_write(true); }
 
-  /* TX/RX data pin - same physical pin P20
-     Setup as OUTPUT first (TX), will be switched to INPUT in start_rx() */
+  /* TX pin (P20) - OUTPUT for bit-bang */
   this->RemoteTransmitterBase::pin_->setup();
   this->RemoteTransmitterBase::pin_->digital_write(false);
+  /* RX pin (P22) - INPUT for ISR */
+  this->RemoteReceiverBase::pin_->setup();
 
   /* ISR store */
   auto &s = store_;
@@ -547,20 +544,10 @@ void SH4RfComponent::space_(uint32_t usec) {
 void IRAM_ATTR SH4RfComponent::send_internal(uint32_t send_times, uint32_t send_wait) {
   ESP_LOGI(TAG, "Transmitting RF code (%u repetition(s))", send_times);
 
-  /* 3 rapid blinks = TX start */
   led_blink_(3, 20, 20);
 
-  /* Detach ISR before switching P20 to OUTPUT */
-  this->RemoteReceiverBase::pin_->detach_interrupt();
-  high_freq_.stop();
-
-  /* Prepare CMT2300A for TX BEFORE disabling interrupts */
   if (!start_tx()) {
     ESP_LOGE(TAG, "TX init failed");
-    /* Reattach ISR */
-    this->RemoteReceiverBase::pin_->attach_interrupt(
-        SH4RfReceiverStore::gpio_intr, &store_, gpio::INTERRUPT_ANY_EDGE);
-    high_freq_.start();
     return;
   }
 
