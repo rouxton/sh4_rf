@@ -243,7 +243,7 @@ bool SH4RfComponent::start_tx() {
 
     ESP_LOGD(TAG, "CMT2300A TX mode ready");
   }
-  /* Switch the shared P20 pin to OUTPUT for TX bit-bang */
+  /* Switch P20 to OUTPUT */
   this->RemoteTransmitterBase::pin_->pin_mode(gpio::FLAG_OUTPUT);
   this->RemoteTransmitterBase::pin_->digital_write(false);
   return true;
@@ -356,7 +356,7 @@ bool SH4RfComponent::start_rx() {
       }
     }
   }
-  /* Switch the shared P20 pin back to INPUT for RX edge ISR */
+  /* Switch P20 back to INPUT */
   this->RemoteReceiverBase::pin_->pin_mode(gpio::FLAG_INPUT);
   return true;
 }
@@ -381,10 +381,10 @@ void SH4RfComponent::setup() {
   if (csb_  != nullptr) { csb_->setup();  csb_->digital_write(true); }
   if (fcsb_ != nullptr) { fcsb_->setup(); fcsb_->digital_write(true); }
 
-  /* TX and RX data pins */
+  /* TX/RX data pin - same physical pin P20
+     Setup as OUTPUT first (TX), will be switched to INPUT in start_rx() */
   this->RemoteTransmitterBase::pin_->setup();
   this->RemoteTransmitterBase::pin_->digital_write(false);
-  this->RemoteReceiverBase::pin_->setup();
 
   /* ISR store */
   auto &s = store_;
