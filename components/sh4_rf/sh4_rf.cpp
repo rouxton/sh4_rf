@@ -263,10 +263,19 @@ bool SH4RfComponent::start_tx() {
   /* Detach ISR before switching TX pin to OUTPUT */
   this->RemoteReceiverBase::pin_->detach_interrupt();
   high_freq_.stop();
+  /* Dump registres GPIO pour diagnostic */
+  for (uint8_t p : {(uint8_t)9, (uint8_t)tx_pin_num_}) {
+    uint32_t addr = ((uint32_t)p + 0x200a00u) << 2;
+    uint32_t val  = *((volatile uint32_t *)addr);
+    ESP_LOGE(TAG, "GPIO P%d reg@0x%08x = 0x%08x", p, addr, val);
+  }
   /* Force TX pin to OUTPUT via direct BK7231N register access */
   BK_GPIO_OUT(tx_pin_num_);
+  BK_GPIO_HIGH(tx_pin_num_);
+  delay(100);
   BK_GPIO_LOW(tx_pin_num_);
-  ESP_LOGD(TAG, "TX pin %d set OUTPUT via BK GPIO reg 0x%08x", tx_pin_num_, ((uint32_t)(tx_pin_num_) + 0x200a00u) << 2);
+  ESP_LOGE(TAG, "GPIO P%d after HIGH+LOW = 0x%08x", tx_pin_num_,
+           *((volatile uint32_t *)(((uint32_t)(tx_pin_num_) + 0x200a00u) << 2)));
   return true;
 }
 
