@@ -243,6 +243,8 @@ bool SH4RfComponent::start_tx() {
 
     ESP_LOGD(TAG, "CMT2300A TX mode ready");
   }
+  /* Switch P20 from INPUT to OUTPUT for bit-bang TX */
+  this->RemoteTransmitterBase::pin_->pin_mode(gpio::FLAG_OUTPUT);
   this->RemoteTransmitterBase::pin_->digital_write(false);
   return true;
 }
@@ -354,6 +356,8 @@ bool SH4RfComponent::start_rx() {
       }
     }
   }
+  /* Switch P20 back to INPUT for RX ISR */
+  this->RemoteReceiverBase::pin_->pin_mode(gpio::FLAG_INPUT);
   return true;
 }
 
@@ -377,10 +381,7 @@ void SH4RfComponent::setup() {
   if (csb_  != nullptr) { csb_->setup();  csb_->digital_write(true); }
   if (fcsb_ != nullptr) { fcsb_->setup(); fcsb_->digital_write(true); }
 
-  /* TX pin (P20) - OUTPUT for bit-bang */
-  this->RemoteTransmitterBase::pin_->setup();
-  this->RemoteTransmitterBase::pin_->digital_write(false);
-  /* RX pin (P22) - INPUT for ISR */
+  /* Data pin P20 - setup as INPUT initially (RX), switched to OUTPUT in start_tx() */
   this->RemoteReceiverBase::pin_->setup();
 
   /* ISR store */
@@ -550,6 +551,15 @@ void IRAM_ATTR SH4RfComponent::send_internal(uint32_t send_times, uint32_t send_
     ESP_LOGE(TAG, "TX init failed");
     return;
   }
+
+  /* Test: blink P20 to confirm OUTPUT mode works */
+  for (int i = 0; i < 5; i++) {
+    this->RemoteTransmitterBase::pin_->digital_write(true);
+    delay(10);
+    this->RemoteTransmitterBase::pin_->digital_write(false);
+    delay(10);
+  }
+  ESP_LOGI(TAG, "P20 blink test done - check analyzer");
 
   {
     InterruptLock lock;
