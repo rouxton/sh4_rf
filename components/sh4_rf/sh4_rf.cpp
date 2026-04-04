@@ -243,21 +243,13 @@ bool SH4RfComponent::start_tx() {
 
     ESP_LOGD(TAG, "CMT2300A TX mode ready");
   }
-  /* Detach ISR, switch P20 to OUTPUT using direct Arduino API */
+  /* Detach ISR before switching TX pin to OUTPUT */
   this->RemoteReceiverBase::pin_->detach_interrupt();
   high_freq_.stop();
-  uint8_t pin_num = this->RemoteTransmitterBase::pin_->get_pin();
-  pinMode(pin_num, OUTPUT);
-  digitalWrite(pin_num, LOW);
-  ESP_LOGI(TAG, "P20 set to OUTPUT via direct Arduino API (pin %d)", pin_num);
-  /* Blink test */
-  for (int i = 0; i < 5; i++) {
-    digitalWrite(pin_num, HIGH);
-    delay(10);
-    digitalWrite(pin_num, LOW);
-    delay(10);
-  }
-  ESP_LOGI(TAG, "Blink test done");
+  /* Force TX pin (P22/GPIO1/DIN) to OUTPUT via direct Arduino API */
+  pinMode(tx_pin_num_, OUTPUT);
+  digitalWrite(tx_pin_num_, LOW);
+  ESP_LOGD(TAG, "TX pin %d set OUTPUT", tx_pin_num_);
   return true;
 }
 
