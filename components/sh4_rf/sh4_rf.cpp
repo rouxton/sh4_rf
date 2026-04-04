@@ -266,7 +266,7 @@ bool SH4RfComponent::start_tx() {
   /* Force TX pin to OUTPUT via direct BK7231N register access */
   BK_GPIO_OUT(tx_pin_num_);
   BK_GPIO_LOW(tx_pin_num_);
-  ESP_LOGD(TAG, "TX pin %d set OUTPUT via BK GPIO reg 0x%08x", tx_pin_num_, BK_GPIO_BASE + tx_pin_num_*4);
+  ESP_LOGD(TAG, "TX pin %d set OUTPUT via BK GPIO reg 0x%08x", tx_pin_num_, ((uint32_t)(tx_pin_num_) + 0x200a00u) << 2);
   return true;
 }
 
