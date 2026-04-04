@@ -20,15 +20,17 @@
 
 /* -----------------------------------------------------------------------
    BK7231N direct GPIO register access
-   GPIO registers: 0x200a00 + pin*4
+   From firmware reverse engineering of gpio_write at 0x5ff58:
+     reg_addr = (pin + 0x200a00) << 2
+     *reg = (*reg & ~0x02) | ((value & 1) << 1)
    Bit1 = output value, Bit0 = direction (0=output, 1=input)
+   GPIO peripheral base: 0x802800 = (0x200a00 << 2)
    ----------------------------------------------------------------------- */
-#define BK_GPIO_BASE    0x200a00u
-#define BK_GPIO_REG(p)  (*((volatile uint32_t *)(BK_GPIO_BASE + (p)*4u)))
-#define BK_GPIO_HIGH(p) do { BK_GPIO_REG(p) = (BK_GPIO_REG(p) & ~0x03u) | 0x02u; } while(0)
-#define BK_GPIO_LOW(p)  do { BK_GPIO_REG(p) = (BK_GPIO_REG(p) & ~0x03u); } while(0)
-#define BK_GPIO_OUT(p)  do { BK_GPIO_REG(p) &= ~0x01u; } while(0)  /* bit0=0 = output */
-#define BK_GPIO_IN(p)   do { BK_GPIO_REG(p) |=  0x01u; } while(0)  /* bit0=1 = input  */
+#define BK_GPIO_REG(p)  (*((volatile uint32_t *)(((uint32_t)(p) + 0x200a00u) << 2)))
+#define BK_GPIO_HIGH(p) do { auto &r = BK_GPIO_REG(p); r = (r & ~0x03u) | 0x02u; } while(0)
+#define BK_GPIO_LOW(p)  do { auto &r = BK_GPIO_REG(p); r = (r & ~0x03u) | 0x00u; } while(0)
+#define BK_GPIO_OUT(p)  do { BK_GPIO_REG(p) &= ~0x01u; } while(0)
+#define BK_GPIO_IN(p)   do { BK_GPIO_REG(p) |=  0x01u; } while(0)
 
 #include "esphome/core/log.h"
 #include "esphome/core/application.h"
