@@ -180,6 +180,7 @@ class SH4RfComponent : public Component,
   bool     transmitting_{false};
   bool     receive_started_{false};
   bool     initialized_{false};
+  uint8_t  cmt_product_id_{0};  /* read during setup, logged in dump_config */
   uint8_t  tx_pin_num_{0};
   uint32_t target_time_{0};
   uint32_t old_write_at_{0};

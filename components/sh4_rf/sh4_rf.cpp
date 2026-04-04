@@ -150,6 +150,7 @@ bool SH4RfComponent::cmt_init() {
 
   /* Verify presence: product_id register (0x01) must read 0x66 for CMT2300A */
   uint8_t pid = spi_read_reg(0x01);
+  cmt_product_id_ = pid;
   ESP_LOGE(TAG, "CMT2300A product_id=0x%02X (expect 0x66)", pid);
 
   if (pid != 0x66) {
@@ -421,6 +422,13 @@ void SH4RfComponent::setup() {
 
 void SH4RfComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "SH4 RF (CMT2300A 433.92 MHz OOK):");
+  if (spi_enabled_) {
+    if (cmt_product_id_ == 0x66) {
+      ESP_LOGCONFIG(TAG, "  CMT2300A: FOUND (product_id=0x66)");
+    } else {
+      ESP_LOGE(TAG, "  CMT2300A: NOT FOUND (product_id=0x%02X, expected 0x66)", cmt_product_id_);
+    }
+  }
   if (is_failed()) {
     ESP_LOGE(TAG, "  Component FAILED during setup()!");
     return;
