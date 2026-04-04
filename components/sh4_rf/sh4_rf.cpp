@@ -572,14 +572,7 @@ void IRAM_ATTR SH4RfComponent::send_internal(uint32_t send_times, uint32_t send_
     return;
   }
 
-  /* Test: blink P20 to confirm OUTPUT mode works */
-  for (int i = 0; i < 5; i++) {
-    this->RemoteTransmitterBase::pin_->digital_write(true);
-    delay(10);
-    this->RemoteTransmitterBase::pin_->digital_write(false);
-    delay(10);
-  }
-  ESP_LOGI(TAG, "P20 blink test done - check analyzer");
+  ESP_LOGI(TAG, "TX bit-bang on pin %d", tx_pin_num_);
 
   {
     InterruptLock lock;
