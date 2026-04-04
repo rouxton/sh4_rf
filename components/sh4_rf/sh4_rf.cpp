@@ -138,6 +138,7 @@ bool SH4RfComponent::go_state_(uint8_t cmd, uint8_t expected) {
    ======================================================================= */
 
 bool SH4RfComponent::cmt_init() {
+  ESP_LOGE(TAG, "cmt_init() called spi_enabled=%d sclk=%p sdio=%p", spi_enabled_, sclk_, sdio_);
   /* Ensure CSB is high before starting */
   pin_hi(csb_);
   pin_lo(sclk_);
@@ -149,13 +150,13 @@ bool SH4RfComponent::cmt_init() {
 
   /* Verify presence: product_id register (0x01) must read 0x66 for CMT2300A */
   uint8_t pid = spi_read_reg(0x01);
-  ESP_LOGD(TAG, "CMT2300A product_id=0x%02X (expect 0x66)", pid);
+  ESP_LOGE(TAG, "CMT2300A product_id=0x%02X (expect 0x66)", pid);
 
   if (pid != 0x66) {
     /* Try once more after longer delay - CMT2300A may need more time after POR */
     delay(50);
     pid = spi_read_reg(0x01);
-    ESP_LOGD(TAG, "CMT2300A product_id retry=0x%02X", pid);
+    ESP_LOGE(TAG, "CMT2300A product_id retry=0x%02X", pid);
   }
 
   if (pid != 0x66) {
@@ -164,7 +165,7 @@ bool SH4RfComponent::cmt_init() {
     return false;
   }
 
-  ESP_LOGD(TAG, "CMT2300A found OK");
+  ESP_LOGE(TAG, "CMT2300A found OK");
 
   /* Load all 6 configuration banks */
   spi_write_bank(CMT2300A_CMT_BANK_ADDR,       CMT_BANK_433,       CMT2300A_CMT_BANK_SIZE);
