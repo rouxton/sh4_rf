@@ -26,12 +26,16 @@
    Bit1 = output value, Bit0 = direction (0=output, 1=input)
    GPIO peripheral base: 0x802800 = (0x200a00 << 2)
    ----------------------------------------------------------------------- */
-#define BK_GPIO_REG(p)  (*((volatile uint32_t *)(((uint32_t)(p) + 0x200a00u) << 2)))
-/* bit[2]=OE (output enable), bit[3]=OUT (output value) */
-#define BK_GPIO_HIGH(p) do { auto &r = BK_GPIO_REG(p); r = (r & ~0x0Cu) | 0x0Cu; } while(0)
-#define BK_GPIO_LOW(p)  do { auto &r = BK_GPIO_REG(p); r = (r & ~0x0Cu) | 0x04u; } while(0)
-#define BK_GPIO_OUT(p)  do { BK_GPIO_REG(p) |=  0x04u; } while(0)  /* set OE */
-#define BK_GPIO_IN(p)   do { BK_GPIO_REG(p) &= ~0x04u; } while(0)  /* clear OE */
+/* BK7231N GPIO ROM functions (addresses confirmed by firmware disassembly) */
+typedef void (*bk_gpio_init_fn_t)(uint8_t pin, uint8_t mode);
+static bk_gpio_init_fn_t bk_gpio_init = (bk_gpio_init_fn_t)(0x15895u); /* Thumb addr */
+
+/* gpio_write: reg = (pin+0x200a00)<<2, bit1 = value */
+#define BK_GPIO_REG(p)   (*((volatile uint32_t *)(((uint32_t)(p) + 0x200a00u) << 2)))
+#define BK_GPIO_HIGH(p)  do { BK_GPIO_REG(p) = (BK_GPIO_REG(p) & ~0x02u) | 0x02u; } while(0)
+#define BK_GPIO_LOW(p)   do { BK_GPIO_REG(p) = (BK_GPIO_REG(p) & ~0x02u); } while(0)
+#define BK_GPIO_OUT(p)   bk_gpio_init((p), 1)  /* gpio_init(pin, OUTPUT) */
+#define BK_GPIO_IN(p)    bk_gpio_init((p), 0)  /* gpio_init(pin, INPUT)  */
 
 #include "esphome/core/log.h"
 #include "esphome/core/application.h"
