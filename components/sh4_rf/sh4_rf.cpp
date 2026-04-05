@@ -27,10 +27,11 @@
    GPIO peripheral base: 0x802800 = (0x200a00 << 2)
    ----------------------------------------------------------------------- */
 #define BK_GPIO_REG(p)  (*((volatile uint32_t *)(((uint32_t)(p) + 0x200a00u) << 2)))
-#define BK_GPIO_HIGH(p) do { auto &r = BK_GPIO_REG(p); r = (r & ~0x03u) | 0x02u; } while(0)
-#define BK_GPIO_LOW(p)  do { auto &r = BK_GPIO_REG(p); r = (r & ~0x03u) | 0x00u; } while(0)
-#define BK_GPIO_OUT(p)  do { BK_GPIO_REG(p) &= ~0x01u; } while(0)
-#define BK_GPIO_IN(p)   do { BK_GPIO_REG(p) |=  0x01u; } while(0)
+/* bit[2]=OE (output enable), bit[3]=OUT (output value) */
+#define BK_GPIO_HIGH(p) do { auto &r = BK_GPIO_REG(p); r = (r & ~0x0Cu) | 0x0Cu; } while(0)
+#define BK_GPIO_LOW(p)  do { auto &r = BK_GPIO_REG(p); r = (r & ~0x0Cu) | 0x04u; } while(0)
+#define BK_GPIO_OUT(p)  do { BK_GPIO_REG(p) |=  0x04u; } while(0)  /* set OE */
+#define BK_GPIO_IN(p)   do { BK_GPIO_REG(p) &= ~0x04u; } while(0)  /* clear OE */
 
 #include "esphome/core/log.h"
 #include "esphome/core/application.h"
