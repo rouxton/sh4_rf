@@ -32,12 +32,9 @@
  * Both called via inline asm to avoid function pointer issues */
 static inline void bk_gpio_init_asm(uint8_t pin, uint8_t mode) {
   __asm__ volatile(
-    "mov r0, %0
-"
-    "mov r1, %1
-"
-    "bl 0x15894
-"
+    "mov r0, %0\n\t"
+    "mov r1, %1\n\t"
+    "bl 0x15894\n\t"
     : : "r"((uint32_t)pin), "r"((uint32_t)mode) : "r0","r1","r2","r3","lr"
   );
 }
