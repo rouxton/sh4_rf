@@ -244,9 +244,10 @@ bool SH4RfComponent::start_tx() {
     spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_SLEEP);
     delay(2);
 
-    /* Step 4: EnableTxDin(true) - set bit5 of reg 0x62 */
+    /* Step 4: EnableTxDin(true) on GPIO2 (P20)
+     * reg 0x62: bit7=TX_DIN_EN, bit6-5=TX_DIN_SEL (01=GPIO2) */
     uint8_t r62 = spi_read_reg(0x62);
-    spi_write_reg(0x62, r62 | 0x20u);
+    spi_write_reg(0x62, (r62 & ~0x60u) | 0x80u | 0x20u);  /* GPIO2, DIN enabled */
 
     /* Step 5: EnableTxDinInvert(true) - set bit1 of FIFO_CTL(0x69) */
     uint8_t fifo = spi_read_reg(CMT2300A_REG_FIFO_CTL);
