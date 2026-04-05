@@ -26,15 +26,12 @@
    Bit1 = output value, Bit0 = direction (0=output, 1=input)
    GPIO peripheral base: 0x802800 = (0x200a00 << 2)
    ----------------------------------------------------------------------- */
-/* BK7231N GPIO via ROM gpio_init @ 0x15894 (Thumb: +1 = 0x15895)
- * mode: 0=INPUT_FLOAT, 1=OUTPUT_LOW, 2=OUTPUT_HIGH */
-static void (* const bk_gpio_init)(uint32_t pin, uint32_t mode) =
-    (void (*)(uint32_t, uint32_t))(0x15895u);
-
-#define BK_GPIO_HIGH(p)  bk_gpio_init((p), 2)
-#define BK_GPIO_LOW(p)   bk_gpio_init((p), 1)
-#define BK_GPIO_OUT(p)   bk_gpio_init((p), 1)
-#define BK_GPIO_IN(p)    bk_gpio_init((p), 0)
+/* BK7231N gpio_write: reg=(pin+0x200a00)<<2, bit1=value, bit0=direction(0=out)
+ * Confirmed by firmware disassembly of gpio_write @ 0x5ff58 */
+#define BK_GPIO_REG(p)    (*((volatile uint32_t*)(((uint32_t)(p)+0x200a00u)<<2u)))
+#define BK_GPIO_OUTPUT(p) do { BK_GPIO_REG(p) &= ~0x01u; } while(0)
+#define BK_GPIO_HIGH(p)   do { uint32_t _r=BK_GPIO_REG(p); BK_GPIO_REG(p)=(_r&~0x03u)|0x02u; } while(0)
+#define BK_GPIO_LOW(p)    do { uint32_t _r=BK_GPIO_REG(p); BK_GPIO_REG(p)=(_r&~0x03u)|0x00u; } while(0)
 
 #include "esphome/core/log.h"
 #include "esphome/core/application.h"
@@ -253,34 +250,19 @@ bool SH4RfComponent::start_tx() {
     uint8_t fifo = spi_read_reg(CMT2300A_REG_FIFO_CTL);
     spi_write_reg(CMT2300A_REG_FIFO_CTL, fifo | 0x02u);
 
-    /* Step 6: GoSleep again */
+    /* Step 6: GoSleep again (firmware stops here - no GoTx) */
     spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_SLEEP);
-    delay(2);
-
-    /* Step 7: GoStby + GoTx (no wait - Tuya firmware doesn't poll state) */
-    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_STBY);
-    delay(2);
-    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_TX);
-    delay(2);
+    delay(5);
 
     ESP_LOGD(TAG, "CMT2300A TX mode ready");
   }
-  /* Detach ISR before switching TX pin to OUTPUT */
+  /* Detach ISR, configure TX pin as OUTPUT LOW */
   this->RemoteReceiverBase::pin_->detach_interrupt();
   high_freq_.stop();
-  /* Diagnostic: lecture/écriture directe registre GPIO P22 */
-  volatile uint32_t *reg22 = (volatile uint32_t *)(((uint32_t)(tx_pin_num_) + 0x200a00u) << 2);
-  uint32_t before = *reg22;
-  ESP_LOGE(TAG, "P22 before=0x%08x addr=0x%08x", before, (uint32_t)reg22);
-  /* Tenter écriture bit3=1 (OUT HIGH) et bit2=1 (OE) */
-  *reg22 = before | 0x0Cu;
-  uint32_t after = *reg22;
-  ESP_LOGE(TAG, "P22 after write 0x%08x = 0x%08x", before | 0x0Cu, after);
-  /* Test: écriture à 0xFF */
-  *reg22 = 0xFFu;
-  ESP_LOGE(TAG, "P22 after write 0xFF = 0x%08x", *reg22);
-  *reg22 = before;  /* restaurer */
-  delay(10);
+  BK_GPIO_LOW(tx_pin_num_);
+  BK_GPIO_OUTPUT(tx_pin_num_);
+  ESP_LOGD(TAG, "TX ready: pin=%d reg=0x%08x", tx_pin_num_,
+           (unsigned)(((uint32_t)(tx_pin_num_)+0x200a00u)<<2u));
   return true;
 }
 
