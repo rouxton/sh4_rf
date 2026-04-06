@@ -127,6 +127,58 @@ void SH4RfComponent::spi_write_bank(uint8_t base_addr, const uint8_t *bank, uint
     spi_write_reg(base_addr + i, bank[i]);
   }
 }
+void SH4RfComponent::fifo_write_byte(uint8_t byte) {
+  /* Write one byte MSB-first into CMT2300A TX FIFO via FCSB chip select.
+   * Sequence from Tuya firmware WriteFifo @ 0x6023c:
+   *   FCSB LOW (select), send 8 bits on SDIO clocked by SCLK, FCSB HIGH */
+  pin_lo(fcsb_);
+  spi_send_byte(sclk_, sdio_, byte);
+  pin_hi(fcsb_);
+}
+
+void SH4RfComponent::fifo_write_buf(const uint8_t *buf, uint8_t len) {
+  sdio_->pin_mode(gpio::FLAG_OUTPUT);
+  pin_lo(sclk_);
+  pin_hi(csb_);   /* CSB high during FIFO access */
+  for (uint8_t i = 0; i < len; i++) {
+    fifo_write_byte(buf[i]);
+  }
+  sdio_->pin_mode(gpio::FLAG_INPUT);
+}
+
+/* Convert raw pulse sequence to OOK bytes at BIT_RATE_US per bit.
+ * Each positive duration → N bits HIGH, each negative → N bits LOW.
+ * Returns number of bytes written. */
+static uint8_t encode_ook(const std::vector<int32_t> &data,
+                           uint8_t *out, uint8_t max_bytes,
+                           uint16_t bit_us = 250) {
+  uint8_t  byte_idx = 0;
+  uint8_t  bit_idx  = 7;  /* MSB first */
+  uint8_t  cur_byte = 0;
+
+  for (int32_t item : data) {
+    bool    level = (item > 0);
+    uint32_t dur  = (uint32_t)(item > 0 ? item : -item);
+    uint32_t bits = (dur + bit_us / 2) / bit_us;  /* round to nearest */
+    if (bits == 0) bits = 1;
+
+    for (uint32_t b = 0; b < bits; b++) {
+      if (level) cur_byte |= (1u << bit_idx);
+      if (bit_idx == 0) {
+        if (byte_idx < max_bytes) out[byte_idx++] = cur_byte;
+        cur_byte = 0;
+        bit_idx  = 7;
+      } else {
+        bit_idx--;
+      }
+    }
+  }
+  /* flush last partial byte */
+  if (bit_idx != 7 && byte_idx < max_bytes) out[byte_idx++] = cur_byte;
+  return byte_idx;
+}
+
+
 
 /* =======================================================================
    CMT2300A state machine helpers
@@ -229,38 +281,26 @@ bool SH4RfComponent::start_tx() {
      *       and the CMT2300A enters TX mode automatically when DIN is asserted
      */
 
-    /* Step 1: IO_SEL = 0x0A */
-    uint8_t io = spi_read_reg(CMT2300A_REG_IO_SEL);
-    io = (io & ~0x1Fu) | 0x0Au;
-    spi_write_reg(CMT2300A_REG_IO_SEL, io);
+    /* FIFO TX mode - confirmed by Tuya firmware reverse engineering:
+     * The CMT2300A uses FIFO mode for TX, not direct GPIO bit-bang.
+     * Data is OOK-encoded into bytes and written into the TX FIFO via FCSB.
+     * The CMT2300A then transmits the FIFO contents through the PA automatically. */
 
-    /* Step 2: INT_EN = 0x3D */
-    spi_write_reg(CMT2300A_REG_INT_EN, 0x3D);
-
-    /* Step 3: GoSleep */
-    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_SLEEP);
-    delay(2);
-
-    /* Step 4: EnableTxDin(true) on GPIO2 (P20)
-     * reg 0x62: bit7=TX_DIN_EN, bit6-5=TX_DIN_SEL (01=GPIO2) */
-    uint8_t r62 = spi_read_reg(0x62);
-    spi_write_reg(0x62, (r62 & ~0x60u) | 0x80u | 0x20u);  /* GPIO2, DIN enabled */
-
-    /* Step 5: EnableTxDinInvert(false) - clear bit1 of FIFO_CTL(0x69)
-     * The CMT2300A inverts DIN signal when this bit is set.
-     * Tuya firmware sets this, but it may cause signal inversion vs what we want. */
-    uint8_t fifo = spi_read_reg(CMT2300A_REG_FIFO_CTL);
-    spi_write_reg(CMT2300A_REG_FIFO_CTL, fifo & ~0x02u);
-
-    /* Step 6: GoSleep → GoStby → GoTx to enable PA */
+    /* Step 1: GoSleep → GoStby */
     spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_SLEEP);
     delay(5);
     spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_STBY);
     delay(2);
-    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_TX);
-    delay(2);
 
-    ESP_LOGD(TAG, "CMT2300A TX mode ready");
+    /* Step 2: Clear TX FIFO and interrupt flags */
+    spi_write_reg(CMT2300A_REG_FIFO_CLR, CMT2300A_CLR_TX_FIFO);
+    spi_write_reg(CMT2300A_REG_INT_CLR1, 0x3F);
+    spi_write_reg(CMT2300A_REG_INT_CLR2, 0x3F);
+
+    /* Step 3: Configure for FIFO TX */
+    spi_write_reg(CMT2300A_REG_INT_EN, CMT2300A_EN_TX_DONE);
+
+    ESP_LOGD(TAG, "CMT2300A FIFO TX mode ready");
   }
   /* Detach ISR, configure TX pin as OUTPUT LOW */
   this->RemoteReceiverBase::pin_->detach_interrupt();
@@ -592,27 +632,53 @@ void IRAM_ATTR SH4RfComponent::send_internal(uint32_t send_times, uint32_t send_
     return;
   }
 
-  ESP_LOGI(TAG, "TX bit-bang on pin %d", tx_pin_num_);
+  /* Encode OOK signal into bytes and send via CMT2300A FIFO */
+  static constexpr uint16_t BIT_US   = 250;   /* 4 kbps OOK */
+  static constexpr uint8_t  FIFO_MAX = 64;    /* CMT2300A TX FIFO size */
 
-  {
-    InterruptLock lock;
-    transmitting_ = true;
-    BK_GPIO_LOW(tx_pin_num_);
+  const auto &raw = this->RemoteTransmitterBase::temp_.get_data();
 
-    target_time_ = 0;
-
-    for (uint32_t rep = 0; rep < send_times; rep++) {
-      for (int32_t item : this->RemoteTransmitterBase::temp_.get_data()) {
-        if (item > 0) mark_(static_cast<uint32_t>(item));
-        else          space_(static_cast<uint32_t>(-item));
-      }
-      if (rep + 1 < send_times && send_wait > 0) space_(send_wait);
-    }
-
-    await_target_time_();
-    BK_GPIO_LOW(tx_pin_num_);
-    transmitting_ = false;
+  /* Build buffer with inter-repetition gaps */
+  std::vector<int32_t> full_data;
+  for (uint32_t rep = 0; rep < send_times; rep++) {
+    for (int32_t v : raw) full_data.push_back(v);
+    if (rep + 1 < send_times && send_wait > 0)
+      full_data.push_back(-(int32_t)send_wait);
   }
+
+  /* Encode to OOK bytes */
+  uint8_t fifo_buf[256];
+  uint8_t fifo_len = encode_ook(full_data, fifo_buf, sizeof(fifo_buf), BIT_US);
+  ESP_LOGI(TAG, "FIFO TX: %u raw items → %u OOK bytes", full_data.size(), fifo_len);
+
+  /* Detach RX ISR during TX */
+  this->RemoteReceiverBase::pin_->detach_interrupt();
+  high_freq_.stop();
+  transmitting_ = true;
+
+  /* Write to FIFO in chunks of 32 bytes (CMT2300A half-FIFO threshold) */
+  uint8_t offset = 0;
+  while (offset < fifo_len) {
+    uint8_t chunk = std::min((uint8_t)(fifo_len - offset), (uint8_t)32u);
+
+    /* Load chunk into FIFO */
+    fifo_write_buf(fifo_buf + offset, chunk);
+    offset += chunk;
+
+    /* GoTx to start transmission */
+    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_TX);
+
+    /* Wait for TX_DONE (bit5 of INT_CLR1 = 0x6A) */
+    uint32_t t0 = millis();
+    while (millis() - t0 < 500) {
+      uint8_t st = spi_read_reg(CMT2300A_REG_INT_CLR1);
+      if (st & 0x20u) break;  /* TX_DONE */
+      App.feed_wdt();
+    }
+    spi_write_reg(CMT2300A_REG_INT_CLR1, 0x3F);
+  }
+
+  transmitting_ = false;
 
   if (!receiver_disabled_) {
     if (!start_rx()) ESP_LOGE(TAG, "Failed to return to RX after TX");

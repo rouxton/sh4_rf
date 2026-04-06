@@ -147,6 +147,8 @@ class SH4RfComponent : public Component,
   void    spi_write_reg(uint8_t addr, uint8_t data);
   uint8_t spi_read_reg(uint8_t addr);
   void    spi_write_bank(uint8_t base_addr, const uint8_t *bank, uint8_t len);
+  void    fifo_write_byte(uint8_t byte);
+  void    fifo_write_buf(const uint8_t *buf, uint8_t len);
 
   /* CMT2300A state machine helpers */
   bool wait_state_(uint8_t expected);
