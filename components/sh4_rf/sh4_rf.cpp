@@ -246,9 +246,11 @@ bool SH4RfComponent::start_tx() {
     uint8_t r62 = spi_read_reg(0x62);
     spi_write_reg(0x62, (r62 & ~0x60u) | 0x80u | 0x20u);  /* GPIO2, DIN enabled */
 
-    /* Step 5: EnableTxDinInvert(true) - set bit1 of FIFO_CTL(0x69) */
+    /* Step 5: EnableTxDinInvert(false) - clear bit1 of FIFO_CTL(0x69)
+     * The CMT2300A inverts DIN signal when this bit is set.
+     * Tuya firmware sets this, but it may cause signal inversion vs what we want. */
     uint8_t fifo = spi_read_reg(CMT2300A_REG_FIFO_CTL);
-    spi_write_reg(CMT2300A_REG_FIFO_CTL, fifo | 0x02u);
+    spi_write_reg(CMT2300A_REG_FIFO_CTL, fifo & ~0x02u);
 
     /* Step 6: GoSleep → GoStby → GoTx to enable PA */
     spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_SLEEP);
