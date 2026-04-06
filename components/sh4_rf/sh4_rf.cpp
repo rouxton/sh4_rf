@@ -250,9 +250,13 @@ bool SH4RfComponent::start_tx() {
     uint8_t fifo = spi_read_reg(CMT2300A_REG_FIFO_CTL);
     spi_write_reg(CMT2300A_REG_FIFO_CTL, fifo | 0x02u);
 
-    /* Step 6: GoSleep again (firmware stops here - no GoTx) */
+    /* Step 6: GoSleep → GoStby → GoTx to enable PA */
     spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_SLEEP);
     delay(5);
+    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_STBY);
+    delay(2);
+    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_TX);
+    delay(2);
 
     ESP_LOGD(TAG, "CMT2300A TX mode ready");
   }
