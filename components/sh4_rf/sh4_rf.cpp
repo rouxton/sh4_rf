@@ -404,8 +404,11 @@ void SH4RfComponent::setup() {
   if (csb_  != nullptr) { csb_->setup();  csb_->digital_write(true); }
   if (fcsb_ != nullptr) { fcsb_->setup(); fcsb_->digital_write(true); }
 
-  /* Data pin P20 - setup as INPUT initially (RX), switched to OUTPUT in start_tx() */
+  /* RX pin - INPUT */
   this->RemoteReceiverBase::pin_->setup();
+  /* TX pin - OUTPUT LOW */
+  this->RemoteTransmitterBase::pin_->setup();
+  this->RemoteTransmitterBase::pin_->digital_write(false);
   tx_pin_num_ = this->RemoteTransmitterBase::pin_->get_pin();
 
   /* ISR store */
