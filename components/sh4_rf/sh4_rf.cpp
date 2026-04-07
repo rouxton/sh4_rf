@@ -149,9 +149,9 @@ void SH4RfComponent::fifo_write_buf(const uint8_t *buf, uint8_t len) {
 /* Convert raw pulse sequence to OOK bytes at BIT_RATE_US per bit.
  * Each positive duration → N bits HIGH, each negative → N bits LOW.
  * Returns number of bytes written. */
-static uint8_t encode_ook(const std::vector<int32_t> &data,
-                           uint8_t *out, uint8_t max_bytes,
-                           uint16_t bit_us = 250) {
+static uint16_t encode_ook(const std::vector<int32_t> &data,
+                            uint8_t *out, uint16_t max_bytes,
+                            uint16_t bit_us = 250) {
   uint8_t  byte_idx = 0;
   uint8_t  bit_idx  = 7;  /* MSB first */
   uint8_t  cur_byte = 0;
@@ -648,7 +648,7 @@ void IRAM_ATTR SH4RfComponent::send_internal(uint32_t send_times, uint32_t send_
 
   /* Encode to OOK bytes */
   uint8_t fifo_buf[256];
-  uint8_t fifo_len = encode_ook(full_data, fifo_buf, sizeof(fifo_buf), BIT_US);
+  uint16_t fifo_len = encode_ook(full_data, fifo_buf, sizeof(fifo_buf), BIT_US);
   ESP_LOGI(TAG, "FIFO TX: %u raw items -> %u OOK bytes", (unsigned)full_data.size(), (unsigned)fifo_len);
 
   /* Detach RX ISR during TX */
