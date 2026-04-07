@@ -649,7 +649,7 @@ void IRAM_ATTR SH4RfComponent::send_internal(uint32_t send_times, uint32_t send_
   /* Encode to OOK bytes */
   uint8_t fifo_buf[256];
   uint8_t fifo_len = encode_ook(full_data, fifo_buf, sizeof(fifo_buf), BIT_US);
-  ESP_LOGI(TAG, "FIFO TX: %u raw items → %u OOK bytes", full_data.size(), fifo_len);
+  ESP_LOGI(TAG, "FIFO TX: %u raw items -> %u OOK bytes", (unsigned)full_data.size(), (unsigned)fifo_len);
 
   /* Detach RX ISR during TX */
   this->RemoteReceiverBase::pin_->detach_interrupt();
