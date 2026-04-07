@@ -281,36 +281,48 @@ bool SH4RfComponent::start_tx() {
      *       and the CMT2300A enters TX mode automatically when DIN is asserted
      */
 
-    /* FIFO TX mode - confirmed by Tuya firmware reverse engineering:
-     * The CMT2300A uses FIFO mode for TX, not direct GPIO bit-bang.
-     * Data is OOK-encoded into bytes and written into the TX FIFO via FCSB.
-     * The CMT2300A then transmits the FIFO contents through the PA automatically. */
+    /* Exact StartTx() sequence from Tuya firmware disassembly:
+     * Mode: DIRECT - CBU bit-bangs DIN (P22) while CMT2300A is in TX state.
+     *
+     * 1. ConfigGpio(0x0A)  → IO_SEL[4:0]=0x0A, INT2_CTL updated
+     * 2. WriteReg(INT_EN=0x68, 0x3D)
+     * 3. GoSleep2(0)       → SYS2(0x0D): clear bit5
+     * 4. EnableTxDin(1)    → TX_CTL(0x62): set bit5
+     * 5. EnableTxDinInvert(1) → FIFO_CTL(0x69): set bit1
+     * 6. GoSleep           → MODE_CTL(0x60) = 0x10
+     * GoTx is called from TX ISR callbacks, not here.
+     */
 
-    /* Step 1: GoSleep → GoStby */
+    /* Step 1: ConfigGpio(0x0A) - IO_SEL and INT2_CTL */
+    uint8_t io = spi_read_reg(CMT2300A_REG_IO_SEL);
+    spi_write_reg(CMT2300A_REG_IO_SEL, (io & ~0x1Fu) | 0x0Au);
+    uint8_t int2 = spi_read_reg(CMT2300A_REG_INT2_CTL);
+    spi_write_reg(CMT2300A_REG_INT2_CTL, (int2 & ~0x1Fu) | 0x0Au);
+
+    /* Step 2: INT_EN = 0x3D */
+    spi_write_reg(CMT2300A_REG_INT_EN, 0x3D);
+
+    /* Step 3: GoSleep2(0) - clear bit5 of SYS2(0x0D) */
+    uint8_t sys2 = spi_read_reg(CMT2300A_REG_SYS2);
+    spi_write_reg(CMT2300A_REG_SYS2, sys2 & ~0x20u);
+
+    /* Step 4: EnableTxDin(1) - set bit5 of TX_CTL(0x62) */
+    uint8_t txctl = spi_read_reg(0x62);
+    spi_write_reg(0x62, txctl | 0x20u);
+
+    /* Step 5: EnableTxDinInvert(1) - set bit1 of FIFO_CTL(0x69) */
+    uint8_t fifo = spi_read_reg(CMT2300A_REG_FIFO_CTL);
+    spi_write_reg(CMT2300A_REG_FIFO_CTL, fifo | 0x02u);
+
+    /* Step 6: GoSleep */
     spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_SLEEP);
     delay(5);
-    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_STBY);
+
+    /* GoTx - activate PA for direct mode bit-bang */
+    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_TX);
     delay(2);
 
-    /* Step 2: Clear TX FIFO and interrupt flags */
-    spi_write_reg(CMT2300A_REG_FIFO_CLR, CMT2300A_CLR_TX_FIFO);
-    spi_write_reg(CMT2300A_REG_INT_CLR1, 0x3F);
-    spi_write_reg(CMT2300A_REG_INT_CLR2, 0x3F);
-
-    /* Step 3: Switch PKT1 to FIFO mode (bits[1:0] = 01)
-     * Default banks configure DIRECT mode (bits[1:0] = 00).
-     * FIFO mode is required for FIFO TX. */
-    uint8_t pkt1 = spi_read_reg(0x38);
-    spi_write_reg(0x38, (pkt1 & ~0x03u) | 0x01u);  /* FIFO mode */
-
-    /* Step 4: Configure INT_EN for TX_DONE */
-    spi_write_reg(CMT2300A_REG_INT_EN, CMT2300A_EN_TX_DONE);
-
-    /* Step 5: GoStby before loading FIFO */
-    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_STBY);
-    delay(2);
-
-    ESP_LOGD(TAG, "CMT2300A FIFO TX mode ready");
+    ESP_LOGD(TAG, "CMT2300A TX mode ready (direct)");
   }
   /* Detach ISR, configure TX pin as OUTPUT LOW */
   this->RemoteReceiverBase::pin_->detach_interrupt();
@@ -642,50 +654,28 @@ void IRAM_ATTR SH4RfComponent::send_internal(uint32_t send_times, uint32_t send_
     return;
   }
 
-  /* Encode OOK signal into bytes and send via CMT2300A FIFO */
-  static constexpr uint16_t BIT_US   = 250;   /* 4 kbps OOK */
-  static constexpr uint8_t  FIFO_MAX = 64;    /* CMT2300A TX FIFO size */
-
-  const auto &raw = this->RemoteTransmitterBase::temp_.get_data();
-
-  /* Build buffer with inter-repetition gaps */
-  std::vector<int32_t> full_data;
-  for (uint32_t rep = 0; rep < send_times; rep++) {
-    for (int32_t v : raw) full_data.push_back(v);
-    if (rep + 1 < send_times && send_wait > 0)
-      full_data.push_back(-(int32_t)send_wait);
-  }
-
-  /* Encode to OOK bytes */
-  uint8_t fifo_buf[256];
-  uint16_t fifo_len = encode_ook(full_data, fifo_buf, sizeof(fifo_buf), BIT_US);
-  ESP_LOGI(TAG, "FIFO TX: %u raw items -> %u OOK bytes", (unsigned)full_data.size(), (unsigned)fifo_len);
-
-  /* Detach RX ISR during TX */
+  /* Direct mode TX: bit-bang DIN (P22) while CMT2300A PA is active.
+   * CMT2300A is in GoTx state (direct mode), CBU drives DIN directly. */
   this->RemoteReceiverBase::pin_->detach_interrupt();
   high_freq_.stop();
   transmitting_ = true;
 
-  /* Write to FIFO in chunks of 32 bytes (CMT2300A half-FIFO threshold) */
-  uint8_t offset = 0;
-  while (offset < fifo_len) {
-    uint8_t chunk = std::min((uint8_t)(fifo_len - offset), (uint8_t)32u);
+  ESP_LOGI(TAG, "Direct TX bit-bang on pin %d", tx_pin_num_);
 
-    /* Load chunk into FIFO */
-    fifo_write_buf(fifo_buf + offset, chunk);
-    offset += chunk;
+  {
+    InterruptLock lock;
+    this->RemoteTransmitterBase::pin_->digital_write(false);
+    target_time_ = 0;
 
-    /* GoTx to start transmission */
-    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_TX);
-
-    /* Wait for TX_DONE (bit5 of INT_CLR1 = 0x6A) */
-    uint32_t t0 = millis();
-    while (millis() - t0 < 500) {
-      uint8_t st = spi_read_reg(CMT2300A_REG_INT_CLR1);
-      if (st & 0x20u) break;  /* TX_DONE */
-      App.feed_wdt();
+    for (uint32_t rep = 0; rep < send_times; rep++) {
+      for (int32_t item : this->RemoteTransmitterBase::temp_.get_data()) {
+        if (item > 0) mark_(static_cast<uint32_t>(item));
+        else          space_(static_cast<uint32_t>(-item));
+      }
+      if (rep + 1 < send_times && send_wait > 0) space_(send_wait);
     }
-    spi_write_reg(CMT2300A_REG_INT_CLR1, 0x3F);
+    await_target_time_();
+    this->RemoteTransmitterBase::pin_->digital_write(false);
   }
 
   transmitting_ = false;
