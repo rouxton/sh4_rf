@@ -297,8 +297,18 @@ bool SH4RfComponent::start_tx() {
     spi_write_reg(CMT2300A_REG_INT_CLR1, 0x3F);
     spi_write_reg(CMT2300A_REG_INT_CLR2, 0x3F);
 
-    /* Step 3: Configure for FIFO TX */
+    /* Step 3: Switch PKT1 to FIFO mode (bits[1:0] = 01)
+     * Default banks configure DIRECT mode (bits[1:0] = 00).
+     * FIFO mode is required for FIFO TX. */
+    uint8_t pkt1 = spi_read_reg(0x38);
+    spi_write_reg(0x38, (pkt1 & ~0x03u) | 0x01u);  /* FIFO mode */
+
+    /* Step 4: Configure INT_EN for TX_DONE */
     spi_write_reg(CMT2300A_REG_INT_EN, CMT2300A_EN_TX_DONE);
+
+    /* Step 5: GoStby before loading FIFO */
+    spi_write_reg(CMT2300A_REG_MODE_CTL, CMT2300A_GO_STBY);
+    delay(2);
 
     ESP_LOGD(TAG, "CMT2300A FIFO TX mode ready");
   }
